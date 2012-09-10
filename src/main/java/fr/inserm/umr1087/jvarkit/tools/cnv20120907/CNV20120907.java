@@ -6,6 +6,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.logging.Logger;
 
 import org.broad.igv.bbfile.BBFileReader;
 import org.broad.igv.bbfile.BigWigIterator;
@@ -24,12 +25,7 @@ import net.sf.samtools.SAMSequenceRecord;
 
 public class CNV20120907
 	{
-	private static class SAMIter
-		{
-		
-		SAMFileReader samReader;
-		SamLocusIterator locusIterator;
-		}
+	private static final Logger LOG=Logger.getLogger("fr.inserm.umr1087.jvarkit");
 	private static class QualCount
 		{
 		int qual;
@@ -55,6 +51,7 @@ public class CNV20120907
 		SAMSequenceDictionary 	dict=this.reference.getSequenceDictionary();
 		for(SAMSequenceRecord chrom: dict.getSequences())
 			{
+			LOG.info("chrom:="+chrom);
 			int start=0;
 			while(start+this.windowSize<= chrom.getSequenceLength())
 				{
@@ -117,7 +114,7 @@ public class CNV20120907
 						System.out.print(wig_total/wig_count);
 						}
 					}
-				
+				/** get coverage */
 				for(SAMFileReader r:bams)
 					{
 					IntervalList iL=new IntervalList(r.getFileHeader());
@@ -201,8 +198,19 @@ public class CNV20120907
 					}
 				++optind;
 				}
-			
-						
+			if(optind==args.length)
+				{
+				System.err.println("No bam defined");
+				return;
+				}
+			while(optind!=args.length)
+				{
+				File f=new File(args[optind++]);
+				LOG.info("opening "+f);
+				SAMFileReader sfr=new SAMFileReader(f);
+				app.bams.add(sfr);
+				}
+			app.run();
 			} 
 	catch (Exception e)
 		{
