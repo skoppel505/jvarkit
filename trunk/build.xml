@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="MyProject" default="all" basedir=".">
+<property file="build.properties"/>
+
+<path id="bigwig.lib">
+      <pathelement path="${bigwig.jar}"/>
+</path>
+
+<path id="picard.lib">
+      <pathelement path="${picard.jar}"/>
+      <pathelement path="${sam.jar}"/>
+</path>
+
+<path id="common.libs">
+     <path refid="picard.lib"/>
+     <path refid="bigwig.lib"/>
+</path>
+
+
+<target name="all" depends="dist/cnv20120907.jar">
+</target>
+
+ <target name="dist/cnv20120907.jar" >
+   <mkdir dir="tmp"/>
+   <mkdir dir="dist"/>
+   
+   
+   
+   <javac destdir="tmp" includeAntRuntime="false">
+   		<src path="src/main/java"/>
+   		<classpath refid="common.libs"/>
+   		<include name="**/CNV20120907.java"/>
+   		
+   </javac>
+   
+	<pathconvert property="${manifest_cp}" refid="common.libs"/>  
+   
+   <jar jarfile="dist/cnv20120907.jar">
+	     <fileset dir="tmp" />
+	     <manifest>
+	       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.cnv20120907.CNV20120907"/>
+	       <attribute name="Class-Path" value="${manifest_cp}"/>
+	     </manifest>
+ 	</jar>
+   
+    <delete dir="tmp"/>
+ </target>
+
+</project>
