@@ -28,7 +28,7 @@ import net.sf.samtools.SAMSequenceRecord;
 
 public class CNV20120907
 	{
-	private static final int BUFFER_SIZE=1000000;
+	private static final int BUFFER_SIZE=10000000;//10E6
 	private static final Logger LOG=Logger.getLogger("fr.inserm.umr1087.jvarkit");
 	private static class QualCount
 		{
@@ -57,10 +57,13 @@ public class CNV20120907
 			{
 			if(!chromId.equals(this.chromName) ||
 				this.qual2depth==null ||
+				this.qual2depth[qualityIndex]==null ||
 				this.start0> chromStart0 ||
 				this.end0<chromEnd0
 				)
 				{
+				
+				this.qual2depth=new int[CNV20120907.this.qual2count.size()][];
 				this.chromName=chromId;
 				this.start0=Math.max(chromStart0-CNV20120907.this.windowSize,0);
 				this.end0=Math.max(chromEnd0,this.start0+CNV20120907.this.windowSize)+BUFFER_SIZE;
@@ -82,7 +85,7 @@ public class CNV20120907
 					{
 					SamLocusIterator.LocusInfo locusInfo=iter.next();
 					int pos0= locusInfo.getPosition() - 1;//1-based
-					int offset=start0-pos0;
+					int offset=pos0-this.start0;
 					
 					for(RecordAndOffset rao:locusInfo.getRecordAndPositions())
 						{
@@ -124,7 +127,9 @@ public class CNV20120907
 				index0 < this.start0 ||
 				index0 >= (this.start0+buffer.length))
 				{
-				this.start0 =Math.max(0,this.start0- CNV20120907.this.windowSize);
+				
+				this.start0 =Math.max(0,index0- CNV20120907.this.windowSize);
+				LOG.info("refill DNA buffer  "+chromId+":"+start0);
 				ReferenceSequence dna= CNV20120907.this.reference.getSubsequenceAt(
 							chromId,
 							this.start0+1,//1-based
@@ -156,12 +161,6 @@ public class CNV20120907
 			int start=0;
 			while(start+this.windowSize<= chrom.getSequenceLength())
 				{
-				
-				ReferenceSequence dna=this.reference.getSubsequenceAt(
-						chrom.getSequenceName(),
-						start+1,//1-based
-						(start+windowSize)//inclusive
-						);
 				int gc=0;
 				int N=0;
 				for(int i=start;N==0 && i<start+this.windowSize;++i)
