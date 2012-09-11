@@ -2,8 +2,11 @@ package fr.inserm.umr1087.jvarkit.tools.cnv20120907;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.logging.Logger;
@@ -25,6 +28,7 @@ import net.sf.samtools.SAMSequenceRecord;
 
 public class CNV20120907
 	{
+	private static final int BUFFER_SIZE=1000000;
 	private static final Logger LOG=Logger.getLogger("fr.inserm.umr1087.jvarkit");
 	private static class QualCount
 		{
@@ -37,28 +41,97 @@ public class CNV20120907
 	private int windowSize=100;
 	private int windowStep=50;
 	private int minBaseQual=30;
-	private List<SAMFileReader> bams=new ArrayList<SAMFileReader>();
+	private List<BamBuffer> bams=new ArrayList<BamBuffer>();
 	private List<BBFileReader> bbInput=new ArrayList<BBFileReader>();
 	List<QualCount> qual2count=new ArrayList<QualCount>();
 	
+	private class BamBuffer
+		{
+		File file;
+		SAMFileReader samReader;
+		String chromName=null;
+		int start0=0;
+		int end0=0;
+		int[][] qual2depth=null;
+		double getDepth(int qualityIndex,String chromId,int chromStart0,int chromEnd0)
+			{
+			if(!chromId.equals(this.chromName) ||
+				this.qual2depth==null ||
+				this.start0> chromStart0 ||
+				this.end0<chromEnd0
+				)
+				{
+				this.chromName=chromId;
+				this.start0=Math.max(chromStart0-CNV20120907.this.windowSize,0);
+				this.end0=Math.max(chromEnd0,this.start0+CNV20120907.this.windowSize)+BUFFER_SIZE;
+				LOG.info("Fill buffer for "+chromName+":"+start0+"-"+end0+" "+file);
+				Interval interval=new Interval(chromId, this.start0+1, this.end0);//Coordinates are 1-based closed ended. 
+				IntervalList iL=new IntervalList(this.samReader.getFileHeader());
+				iL.add(interval);
+	
+				SamLocusIterator sli=new SamLocusIterator(this.samReader,iL);
+				
+				for(int i=0;i< CNV20120907.this.qual2count.size();++i)
+					{
+					qual2depth[i]=new int[end0-start0];
+					Arrays.fill(this.qual2depth[i], 0);
+					}
+				for(Iterator<SamLocusIterator.LocusInfo>  iter=sli.iterator();
+						iter.hasNext();
+						)
+					{
+					SamLocusIterator.LocusInfo locusInfo=iter.next();
+					int pos0= locusInfo.getPosition() - 1;//1-based
+					int offset=start0-pos0;
+					
+					for(RecordAndOffset rao:locusInfo.getRecordAndPositions())
+						{
+						for(int i=0;i< CNV20120907.this.qual2count.size();++i)
+							{
+							QualCount qc= CNV20120907.this.qual2count.get(i);
+							if(rao.getBaseQuality()< qc.qual) continue;
+							
+							if(offset>=this.qual2depth[i].length ) continue;
+							this.qual2depth[i][offset]++;
+							}
+						}
+					}
+				sli.close();
+				}
+			double count=0;
+			double depth=0;
+			for(int i=chromStart0;
+					i< chromEnd0 && (i-this.start0) < this.qual2depth[qualityIndex].length ;
+					++i)
+				{
+				count+=1;
+				depth+= this.qual2depth[qualityIndex][i-this.start0];
+				}
+			return depth/count;
+			}
+		}
+	
 	private class ReferenceBuffer
 		{
-		String name=null;
+		String chromName=null;
 		int start0=0;
 		byte buffer[]=null;
 
 		byte getBaseAt(String chromId,int index0)
 			{
-			if(!chromId.equals(this.name) || buffer==null || index0 < this.start0 || index0 >= (this.start0+buffer.length))
+			if(!chromId.equals(this.chromName) ||
+				buffer==null ||
+				index0 < this.start0 ||
+				index0 >= (this.start0+buffer.length))
 				{
 				this.start0 =Math.max(0,this.start0- CNV20120907.this.windowSize);
 				ReferenceSequence dna= CNV20120907.this.reference.getSubsequenceAt(
 							chromId,
 							this.start0+1,//1-based
-							(this.start0+windowSize)//inclusive
+							Math.max(this.start0+BUFFER_SIZE,this.start0+windowSize+1)//inclusive
 							);
 				this.buffer=dna.getBases();
-				this.name=chromId;
+				this.chromName=chromId;
 				}
 			return this.buffer[index0-this.start0];
 			}
@@ -83,11 +156,7 @@ public class CNV20120907
 			int start=0;
 			while(start+this.windowSize<= chrom.getSequenceLength())
 				{
-				Interval interval=new Interval(
-						chrom.getSequenceName(),
-						start+1,
-						(start+windowSize)
-						);
+				
 				ReferenceSequence dna=this.reference.getSubsequenceAt(
 						chrom.getSequenceName(),
 						start+1,//1-based
@@ -95,8 +164,9 @@ public class CNV20120907
 						);
 				int gc=0;
 				int N=0;
-				for(byte base:dna.getBases())
+				for(int i=start;N==0 && i<start+this.windowSize;++i);
 					{
+					byte base=referenceBuffer.getBaseAt(chrom.getSequenceName(), i);
 					switch(base)
 						{
 						case 'n': case 'N': ++N;break;
@@ -105,7 +175,6 @@ public class CNV20120907
 						case 'g': case 'G': ++gc; break;
 						default:break;
 						}
-					if(N>0) break;
 					}
 				if(N>0)
 					{
@@ -151,39 +220,17 @@ public class CNV20120907
 
 				
 				/** get coverage */
-				for(SAMFileReader r:bams)
+				for(BamBuffer r:bams)
 					{
-					IntervalList iL=new IntervalList(r.getFileHeader());
-					iL.add(interval);//Coordinates are 1-based closed ended. 
-
-					SamLocusIterator sli=new SamLocusIterator(r,iL);
-					
-					for(QualCount qc:qual2count)
-						{
-						qc.count=0;
-						}
-					for(Iterator<SamLocusIterator.LocusInfo>  i=sli.iterator();
-							i.hasNext();
-							)
-						{
-						
-						SamLocusIterator.LocusInfo locusInfo=i.next();
-
-
-						for(RecordAndOffset rao:locusInfo.getRecordAndPositions())
-							{
-							for(QualCount qc:qual2count)
-								{
-								if(rao.getBaseQuality()< qc.qual) continue;
-								qc.count++;
-								}
-							}
-						}
-					sli.close();
-					for(QualCount qc:qual2count)
+					for(int qualIndex=0;qualIndex< this.qual2count.size();++qualIndex)
 						{
 						System.out.print('\t');
-						System.out.printf("%.2f",qc.count/(double)windowSize);
+						System.out.printf("%.2f",r.getDepth(
+								qualIndex,
+								chrom.getSequenceName(),
+								start,
+								start+windowSize
+								));
 						}
 					}
 				
@@ -267,10 +314,11 @@ public class CNV20120907
 			}
 		while(optind!=args.length)
 			{
-			File f=new File(args[optind++]);
-			LOG.info("opening "+f);
-			SAMFileReader sfr=new SAMFileReader(f);
-			this.bams.add(sfr);
+			BamBuffer buf=new BamBuffer();
+			buf.file=new File(args[optind++]);
+			LOG.info("opening "+buf.file);
+			buf.samReader=new SAMFileReader(buf.file);
+			this.bams.add(buf);
 			}
 		this.run();
 		}
