@@ -13,6 +13,7 @@ import org.broad.igv.bbfile.WigItem;
 
 import fr.inserm.umr1087.jvarkit.util.bin.DefaultBinList;
 import fr.inserm.umr1087.jvarkit.util.bin.Overlap;
+import fr.inserm.umr1087.jvarkit.util.intervalparser.IntervalParser;
 
 import net.sf.picard.reference.ReferenceSequence;
 import net.sf.picard.reference.ReferenceSequenceFile;
@@ -22,14 +23,12 @@ import net.sf.picard.util.IntervalList;
 import net.sf.picard.util.SamLocusIterator;
 import net.sf.picard.util.SamLocusIterator.RecordAndOffset;
 import net.sf.samtools.SAMFileReader;
-import net.sf.samtools.SAMRecord;
-import net.sf.samtools.SAMRecordIterator;
 import net.sf.samtools.SAMSequenceDictionary;
 import net.sf.samtools.SAMSequenceRecord;
 
 public class CNV20120907
 	{
-	private static final int BUFFER_SIZE=1000000;//1E6
+	private int BUFFER_SIZE=1000000;//1E6
 	private static final Logger LOG=Logger.getLogger("fr.inserm.umr1087.jvarkit");
 	private static class QualCount
 		{
@@ -43,8 +42,8 @@ public class CNV20120907
 	private int windowStep=50;
 	private List<BamBuffer> bams=new ArrayList<BamBuffer>();
 	private List<WigBuffer> bbInput=new ArrayList<WigBuffer>();
-	List<QualCount> qual2count=new ArrayList<QualCount>();
-	
+	private List<QualCount> qual2count=new ArrayList<QualCount>();
+	private Interval targetInterval=null;
 	
 	private class WigBuffer
 		{
@@ -144,7 +143,7 @@ public class CNV20120907
                                                 for(int i=0;i< CNV20120907.this.qual2count.size();++i)
                                                         {
                                                         QualCount qc= CNV20120907.this.qual2count.get(i);
-                                                        //if(rao.getBaseQuality()< qc.qual) continue;
+                                                        if(rao.getBaseQuality()< qc.qual) continue;
                                                        
                                                         if(offset>=this.qual2depth[i].length )
                                                                 {
@@ -205,6 +204,7 @@ public class CNV20120907
 		
 		}
 
+	@SuppressWarnings("unused")
 	private void test() throws Exception
 		{
 		String chrom="chr1";
@@ -244,9 +244,14 @@ public class CNV20120907
 		SAMSequenceDictionary 	dict=this.reference.getSequenceDictionary();
 		for(SAMSequenceRecord chrom: dict.getSequences())
 			{
+			if(targetInterval!=null && !targetInterval.getSequence().equals(chrom.getSequenceName()))
+				{
+				continue;
+				}
 			LOG.info("chrom:="+chrom.getSequenceName()+"/"+chrom.getSequenceLength());
-			int start=0;
-			while(start+this.windowSize<= chrom.getSequenceLength())
+			int  start=(targetInterval!=null?targetInterval.getStart():0);
+			while(start+this.windowSize<=
+					(targetInterval!=null?targetInterval.getEnd():chrom.getSequenceLength()))
 				{
 				int gc=0;
 				int N=0;
@@ -321,7 +326,10 @@ public class CNV20120907
 			"Options:\n"+
 			" -f (fasta) reference fasta indexed with faidx\n"+
 			" -bw (file) add this bigwig file\n"+
-			" -q <int> add this quality treshold for BAM alignments\n"
+			" -q <int> add this quality treshold for BAM alignments\n"+
+			" -L <Chrom:star-end> target interval (optional)\n"+
+			" -w <int> window-size["+this.windowSize+"]\n"+
+			" -s <int> step-size["+this.windowStep+"]\n"
 			);
 		}
 
@@ -354,6 +362,28 @@ public class CNV20120907
 				QualCount qc=new QualCount();
 				qc.qual=Integer.parseInt(args[++optind]);
 				this.qual2count.add(qc);
+				}
+			else if(args[optind].equals("-w") && optind+1 < args.length )
+				{
+				this.windowSize=Integer.parseInt(args[++optind]);
+				}
+			else if(args[optind].equals("-s") && optind+1 < args.length )
+				{
+				this.windowStep=Integer.parseInt(args[+
+				                          			+optind]);
+				}
+			else if(args[optind].equals("-L") && optind+1 < args.length )
+				{
+				this.targetInterval=IntervalParser.parseOne(args[++optind]);
+				if(this.targetInterval==null)
+					{
+					System.err.println("bad range:"+args[optind]);
+					}
+				int len=this.targetInterval.getEnd()-this.targetInterval.getStart();
+				if(BUFFER_SIZE<=len)
+					{
+					BUFFER_SIZE=(len+1000);
+					}
 				}
 			else if(args[optind].equals("--"))
 				{
