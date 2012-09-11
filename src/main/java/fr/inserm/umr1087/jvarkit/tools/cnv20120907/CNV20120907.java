@@ -117,51 +117,45 @@ public class CNV20120907
 				{
 				
 				this.qual2depth=new int[CNV20120907.this.qual2count.size()][];
-				this.chromName=chromId;
-				this.start0=Math.max(chromStart0-CNV20120907.this.windowSize,0);
-				this.end0=Math.max(chromEnd0,this.start0+CNV20120907.this.windowSize)+BUFFER_SIZE;
-				LOG.info("Fill buffer for "+chromName+":"+start0+"-"+end0+" "+file);
-				Interval interval=new Interval(chromId, this.start0+1, this.end0);//Coordinates are 1-based closed ended. 
-				IntervalList iL=new IntervalList(this.samReader.getFileHeader());
-				iL.add(interval);
-				
-				for(int i=0;i< CNV20120907.this.qual2count.size();++i)
-					{
-					qual2depth[i]=new int[this.end0-this.start0];
-					Arrays.fill(this.qual2depth[i], 0);
-					}
-
-				
-				SAMRecordIterator rec=this.samReader.queryOverlapping(chromId, this.start0+1, this.end0);
-				while(rec.hasNext())
-					{
-					SAMRecord samRec=rec.next();
-					if(samRec.getReadUnmappedFlag()) continue;//????
-					
-					for(int i=0;i< CNV20120907.this.qual2count.size();++i)
-						{
-						QualCount qc= CNV20120907.this.qual2count.get(i);
-						//if(rao.getBaseQuality()< qc.qual) continue;
-						if(samRec.getMappingQuality() < qc.qual) continue;
-						
-						for(int pos1=samRec.getAlignmentStart();//1-based
-								pos1<=samRec.getAlignmentEnd();
-								++pos1)
-							{
-							int pos0=pos1- 1;//1-based
-							int offset=pos0-this.start0;
-							if(offset<0 || offset>=this.qual2depth[i].length )
-								{
-								continue;
-								}
-							this.qual2depth[i][offset]++;
-							}
-					
-						}
-					
-					
-					}
-				rec.close();
+                                this.chromName=chromId;
+                                this.start0=Math.max(chromStart0-CNV20120907.this.windowSize,0);
+                                this.end0=Math.max(chromEnd0,this.start0+CNV20120907.this.windowSize)+BUFFER_SIZE;
+                                LOG.info("Fill buffer for "+chromName+":"+start0+"-"+end0+" "+file);
+                                Interval interval=new Interval(chromId, this.start0+1, this.end0);//Coordinates are 1-based closed ended.
+                                IntervalList iL=new IntervalList(this.samReader.getFileHeader());
+                                iL.add(interval);
+       
+                                SamLocusIterator sli=new SamLocusIterator(this.samReader,iL,true);
+                               
+                                for(int i=0;i< CNV20120907.this.qual2count.size();++i)
+                                        {
+                                        qual2depth[i]=new int[this.end0-this.start0];
+                                        Arrays.fill(this.qual2depth[i], 0);
+                                        }
+                                for(Iterator<SamLocusIterator.LocusInfo>  iter=sli.iterator();
+                                                iter.hasNext();
+                                                )
+                                        {
+                                        SamLocusIterator.LocusInfo locusInfo=iter.next();
+                                        int pos0= locusInfo.getPosition() - 1;//1-based
+                                        int offset=pos0-this.start0;                                    
+                                        for(RecordAndOffset rao:locusInfo.getRecordAndPositions())
+                                                {
+                                                for(int i=0;i< CNV20120907.this.qual2count.size();++i)
+                                                        {
+                                                        QualCount qc= CNV20120907.this.qual2count.get(i);
+                                                        //if(rao.getBaseQuality()< qc.qual) continue;
+                                                       
+                                                        if(offset>=this.qual2depth[i].length )
+                                                                {
+                                                                System.err.println("???");
+                                                                continue;
+                                                                }
+                                                        this.qual2depth[i][offset]++;
+                                                        }
+                                                }
+                                        }
+                                //sli.close();
 				}
 			double count=0;
 			double depth=0;
