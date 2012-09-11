@@ -51,7 +51,7 @@ public class CNV20120907
 		int start0=0;
 		int end0=0;
 		DefaultBinList<Float> binIndex=null;
-		double getDepth(String chromId,int chromStart0,int chromEnd0)
+		double getMean(String chromId,int chromStart0,int chromEnd0)
 			{
 			if(!chromId.equals(this.chromName) ||
 				this.binIndex==null ||
@@ -123,11 +123,11 @@ public class CNV20120907
 				IntervalList iL=new IntervalList(this.samReader.getFileHeader());
 				iL.add(interval);
 	
-				SamLocusIterator sli=new SamLocusIterator(this.samReader,iL);
+				SamLocusIterator sli=new SamLocusIterator(this.samReader,iL,true);
 				
 				for(int i=0;i< CNV20120907.this.qual2count.size();++i)
 					{
-					qual2depth[i]=new int[end0-start0];
+					qual2depth[i]=new int[this.end0-this.start0];
 					Arrays.fill(this.qual2depth[i], 0);
 					}
 				for(Iterator<SamLocusIterator.LocusInfo>  iter=sli.iterator();
@@ -136,21 +136,24 @@ public class CNV20120907
 					{
 					SamLocusIterator.LocusInfo locusInfo=iter.next();
 					int pos0= locusInfo.getPosition() - 1;//1-based
-					int offset=pos0-this.start0;
-					
+					int offset=pos0-this.start0;					
 					for(RecordAndOffset rao:locusInfo.getRecordAndPositions())
 						{
 						for(int i=0;i< CNV20120907.this.qual2count.size();++i)
 							{
 							QualCount qc= CNV20120907.this.qual2count.get(i);
-							if(rao.getBaseQuality()< qc.qual) continue;
+							//if(rao.getBaseQuality()< qc.qual) continue;
 							
-							if(offset>=this.qual2depth[i].length ) continue;
+							if(offset>=this.qual2depth[i].length )
+								{
+								System.err.println("???");
+								continue;
+								}
 							this.qual2depth[i][offset]++;
 							}
 						}
 					}
-				sli.close();
+				//sli.close();
 				}
 			double count=0;
 			double depth=0;
@@ -200,7 +203,38 @@ public class CNV20120907
 		
 		}
 
-	
+	private void test() throws Exception
+		{
+		String chrom="chr1";
+		int chromStart=12000;
+		int chromEnd=chromStart+100;
+		for(int i=chromStart;i<chromEnd;++i)
+			{
+			if((i-chromStart)%60==0) System.out.println();
+			 System.out.print((char)referenceBuffer.getBaseAt(chrom, i));
+			}
+		for(WigBuffer wigBuffer: this.bbInput)
+			{
+			for(int i=chromStart;i<chromEnd;++i)
+				{
+				System.out.print((i-chromStart)%10==0?'\n':' ');
+				System.out.printf(
+						"%d:%2.2f",i,wigBuffer.getMean(
+						chrom,
+						i,
+						i+10
+						));
+				System.out.print(":"+wigBuffer.binIndex.get(i, i+10,Overlap.QUERY_OVERLAP_FEATURE));
+				}
+			System.out.println();
+			
+			System.out.println();
+			}
+			
+			
+		System.out.println();
+		System.exit(0);
+		}
 
 	
 	private void run() throws Exception
@@ -248,7 +282,7 @@ public class CNV20120907
 					{
 					
 					System.out.print('\t');
-					System.out.printf("%.2f",wigBuffer.getDepth(
+					System.out.printf("%.2f",wigBuffer.getMean(
 							chrom.getSequenceName(),
 							start,
 							start+windowSize
@@ -359,6 +393,7 @@ public class CNV20120907
 			buf.samReader=new SAMFileReader(buf.file);
 			this.bams.add(buf);
 			}
+		//this.test();
 		this.run();
 		}
 
