@@ -241,6 +241,17 @@ public class CNV20120907
 	
 	private void run() throws Exception
 		{
+		System.out.print("#chrom\tchromStart\tchromEnd\tGC%");
+		for(WigBuffer wigBuffer: this.bbInput)
+			{
+			System.out.print("\t"+wigBuffer.bw.getBBFilePath());
+			}
+		for(BamBuffer b: this.bams)
+			{
+			System.out.print("\t"+b.file);
+			}	
+		
+		System.out.println();
 		SAMSequenceDictionary 	dict=this.reference.getSequenceDictionary();
 		for(SAMSequenceRecord chrom: dict.getSequences())
 			{
@@ -369,8 +380,7 @@ public class CNV20120907
 				}
 			else if(args[optind].equals("-s") && optind+1 < args.length )
 				{
-				this.windowStep=Integer.parseInt(args[+
-				                          			+optind]);
+				this.windowStep=Integer.parseInt(args[++optind]);
 				}
 			else if(args[optind].equals("-L") && optind+1 < args.length )
 				{
@@ -380,10 +390,7 @@ public class CNV20120907
 					System.err.println("bad range:"+args[optind]);
 					}
 				int len=this.targetInterval.getEnd()-this.targetInterval.getStart();
-				if(BUFFER_SIZE<=len)
-					{
-					BUFFER_SIZE=(len+1000);
-					}
+				
 				}
 			else if(args[optind].equals("--"))
 				{
@@ -400,6 +407,10 @@ public class CNV20120907
 				break;
 				}
 			++optind;
+			}
+		if(BUFFER_SIZE<=this.windowSize)
+			{
+			BUFFER_SIZE=(this.windowSize+1000);
 			}
 		if(this.qual2count.isEmpty())
 			{
