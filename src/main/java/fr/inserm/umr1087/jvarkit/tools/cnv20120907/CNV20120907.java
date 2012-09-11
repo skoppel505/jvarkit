@@ -164,7 +164,7 @@ public class CNV20120907
 						);
 				int gc=0;
 				int N=0;
-				for(int i=start;N==0 && i<start+this.windowSize;++i);
+				for(int i=start;N==0 && i<start+this.windowSize;++i)
 					{
 					byte base=referenceBuffer.getBaseAt(chrom.getSequenceName(), i);
 					switch(base)
