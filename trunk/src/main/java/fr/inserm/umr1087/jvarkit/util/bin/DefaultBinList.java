@@ -1,4 +1,4 @@
-package fr.inserm.umr1087.jvarkit.util.bin;
+ package fr.inserm.umr1087.jvarkit.util.bin;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -122,12 +122,13 @@ public class DefaultBinList<T>
 				/* iterator is eof */
 				if(!listiter.hasNext())
 					{
+					++binIndex;
 					/* no more bin */
 					if(binIndex>=this.bins.size())
 						{
 						return false;
 						}
-					++binIndex;
+					
 					List<Carrier<T>>  L= DefaultBinList.this.bin2list.get(this.bins.get(binIndex));
 					if(L==null) L=Collections.emptyList(); 
 					listiter=L.iterator();
