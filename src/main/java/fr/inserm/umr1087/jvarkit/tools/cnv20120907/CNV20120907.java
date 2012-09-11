@@ -3,17 +3,16 @@ package fr.inserm.umr1087.jvarkit.tools.cnv20120907;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
 import java.util.logging.Logger;
 
 import org.broad.igv.bbfile.BBFileReader;
 import org.broad.igv.bbfile.BigWigIterator;
 import org.broad.igv.bbfile.WigItem;
+
+import fr.inserm.umr1087.jvarkit.util.bin.DefaultBinList;
+import fr.inserm.umr1087.jvarkit.util.bin.Overlap;
 
 import net.sf.picard.reference.ReferenceSequence;
 import net.sf.picard.reference.ReferenceSequenceFile;
@@ -33,17 +32,69 @@ public class CNV20120907
 	private static class QualCount
 		{
 		int qual;
-		int count;
+		//int count;
 		}
 	
 	
 	private ReferenceSequenceFile reference=null;
 	private int windowSize=100;
 	private int windowStep=50;
-	private int minBaseQual=30;
 	private List<BamBuffer> bams=new ArrayList<BamBuffer>();
-	private List<BBFileReader> bbInput=new ArrayList<BBFileReader>();
+	private List<WigBuffer> bbInput=new ArrayList<WigBuffer>();
 	List<QualCount> qual2count=new ArrayList<QualCount>();
+	
+	
+	private class WigBuffer
+		{
+		BBFileReader bw;
+		String chromName=null;
+		int start0=0;
+		int end0=0;
+		DefaultBinList<Float> binIndex=null;
+		double getDepth(String chromId,int chromStart0,int chromEnd0)
+			{
+			if(!chromId.equals(this.chromName) ||
+				this.binIndex==null ||
+				this.start0> chromStart0 ||
+				this.end0<=chromEnd0
+				)
+				{
+				if(!this.bw.isBigWigFile()) return Double.NaN;
+				this.binIndex=new DefaultBinList<Float>();
+				this.chromName=chromId;
+				this.start0=Math.max(chromStart0-CNV20120907.this.windowSize,0);
+				this.end0=Math.max(chromEnd0,this.start0+CNV20120907.this.windowSize)+BUFFER_SIZE;
+				LOG.info("Fill buffer for "+chromName+":"+start0+"-"+end0+" "+bw.getBBFilePath());
+				
+				
+				BigWigIterator iter=this.bw.getBigWigIterator(
+						this.chromName,
+						this.start0,
+						this.chromName,
+						this.end0,
+						false
+						);
+				while(iter.hasNext())
+					{
+					WigItem witem=iter.next();
+					this.binIndex.put(witem.getStartBase(), witem.getEndBase(), witem.getWigValue());
+					}
+				}
+			double count=0;
+			double total=0;
+			for(
+					Iterator<Float> i=this.binIndex.iterator(chromStart0, chromEnd0,Overlap.QUERY_OVERLAP_FEATURE);
+					i.hasNext();
+					)
+				{
+				total+=i.next();
+				count+=1;
+				}
+			if(count==0) return Double.NaN;
+			return total/count;
+			}
+
+		}
 	
 	private class BamBuffer
 		{
@@ -193,28 +244,16 @@ public class CNV20120907
 				System.out.print(gc/(double)windowSize);
 				
 				/** loop over the big files */
-				for(BBFileReader bbReader: this.bbInput)
+				for(WigBuffer wigBuffer: this.bbInput)
 					{
-					if(bbReader.isBigWigFile())
-						{
-						double wig_total=0;
-						int wig_count=0;
-						BigWigIterator iter=bbReader.getBigWigIterator(
-								chrom.getSequenceName(),
-								start,
-								chrom.getSequenceName(),
-								start+windowSize,
-								false
-								);
-						while(iter.hasNext())
-							{
-							WigItem witem=iter.next();
-							wig_total+=witem.getWigValue();
-							++wig_count;
-							}
-						System.out.print('\t');
-						System.out.printf("%.2f",wig_total/(double)wig_count);
-						}
+					
+					System.out.print('\t');
+					System.out.printf("%.2f",wigBuffer.getDepth(
+							chrom.getSequenceName(),
+							start,
+							start+windowSize
+							));
+						
 					}
 
 				
@@ -270,8 +309,9 @@ public class CNV20120907
 				}
 			else if(args[optind].equals("-bw") && optind+1 < args.length )
 				{
-				BBFileReader bbReader=new BBFileReader(args[++optind]);
-				this.bbInput.add(bbReader);
+				WigBuffer wb=new WigBuffer();
+				wb.bw=new BBFileReader(args[++optind]);
+				this.bbInput.add(wb);
 				}
 			else if(args[optind].equals("-q") && optind+1 < args.length )
 				{
