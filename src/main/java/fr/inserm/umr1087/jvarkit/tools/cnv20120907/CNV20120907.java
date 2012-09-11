@@ -27,7 +27,7 @@ import net.sf.samtools.SAMSequenceRecord;
 
 public class CNV20120907
 	{
-	private static final int BUFFER_SIZE=10000000;//10E6
+	private static final int BUFFER_SIZE=1000000;//1E6
 	private static final Logger LOG=Logger.getLogger("fr.inserm.umr1087.jvarkit");
 	private static class QualCount
 		{
