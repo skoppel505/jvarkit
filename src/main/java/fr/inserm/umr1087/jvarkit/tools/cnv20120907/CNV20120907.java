@@ -182,16 +182,17 @@ public class CNV20120907
 				index0 < this.start0 ||
 				index0 >= (this.start0+buffer.length))
 				{
-				
+				this.chromName=chromId;
 				this.start0 =Math.max(0,index0- CNV20120907.this.windowSize);
+				int end=CNV20120907.this.reference.getSequenceDictionary().getSequence(chromId).getSequenceLength();
+				end=Math.min(end, Math.max(this.start0+BUFFER_SIZE,this.start0+windowSize+1));
 				LOG.info("refill DNA buffer  "+chromId+":"+start0);
 				ReferenceSequence dna= CNV20120907.this.reference.getSubsequenceAt(
 							chromId,
 							this.start0+1,//1-based
-							Math.max(this.start0+BUFFER_SIZE,this.start0+windowSize+1)//inclusive
+							end//inclusive
 							);
 				this.buffer=dna.getBases();
-				this.chromName=chromId;
 				}
 			return this.buffer[index0-this.start0];
 			}
