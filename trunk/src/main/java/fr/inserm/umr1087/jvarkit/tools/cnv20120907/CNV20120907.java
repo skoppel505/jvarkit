@@ -125,7 +125,10 @@ public class CNV20120907
                                 iL.add(interval);
        
                                 SamLocusIterator sli=new SamLocusIterator(this.samReader,iL,true);
-                               
+                                if(CNV20120907.this.qual2count.size()==1)
+                                	{
+                                	sli.setMappingQualityScoreCutoff(CNV20120907.this.qual2count.get(0).qual);
+                                	}
                                 for(int i=0;i< CNV20120907.this.qual2count.size();++i)
                                         {
                                         qual2depth[i]=new int[this.end0-this.start0];
@@ -135,24 +138,42 @@ public class CNV20120907
                                                 iter.hasNext();
                                                 )
                                         {
+                                		
                                         SamLocusIterator.LocusInfo locusInfo=iter.next();
                                         int pos0= locusInfo.getPosition() - 1;//1-based
-                                        int offset=pos0-this.start0;                                    
-                                        for(RecordAndOffset rao:locusInfo.getRecordAndPositions())
-                                                {
-                                                for(int i=0;i< CNV20120907.this.qual2count.size();++i)
-                                                        {
-                                                        QualCount qc= CNV20120907.this.qual2count.get(i);
-                                                        if(rao.getBaseQuality()< qc.qual) continue;
-                                                       
-                                                        if(offset>=this.qual2depth[i].length )
-                                                                {
-                                                                System.err.println("???");
-                                                                continue;
-                                                                }
-                                                        this.qual2depth[i][offset]++;
-                                                        }
-                                                }
+                                        int offset=pos0-this.start0;
+                                        
+                                        if(CNV20120907.this.qual2count.size()==1)
+                                        	{
+                                        	//already filtered on quality, see above
+                                        	if(offset>=this.qual2depth[0].length )
+	                                             {
+	                                             System.err.println("???");
+	                                             continue;
+	                                             }
+                                        	this.qual2depth[0][offset]+=locusInfo.getRecordAndPositions().size();
+                                        	}
+                                        else
+	                                        {
+	                                        
+	                                        for(RecordAndOffset rao:locusInfo.getRecordAndPositions())
+	                                                {
+	
+	                                                for(int i=0;i< CNV20120907.this.qual2count.size();++i)
+	                                                        {
+	                                                        QualCount qc= CNV20120907.this.qual2count.get(i);
+	                                                    	if(rao.getRecord().getMappingQuality()< qc.qual) continue;
+	
+	                                                        
+	                                                        if(offset>=this.qual2depth[i].length )
+	                                                                {
+	                                                                System.err.println("???");
+	                                                                continue;
+	                                                                }
+	                                                        this.qual2depth[i][offset]++;
+	                                                        }
+	                                                }
+	                                        }
                                         }
                                 //sli.close();
 				}
