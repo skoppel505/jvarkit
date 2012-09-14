@@ -456,6 +456,7 @@ public class CNV20120907
 			buf.file=new File(args[optind++]);
 			LOG.info("opening "+buf.file);
 			buf.samReader=new SAMFileReader(buf.file);
+			buf.samReader.setDefaultValidationStringency(SAMFileReader.ValidationStringency.LENIENT);
 			this.bams.add(buf);
 			}
 		//this.test();
