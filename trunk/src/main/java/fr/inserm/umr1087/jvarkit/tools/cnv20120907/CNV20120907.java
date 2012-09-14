@@ -450,13 +450,15 @@ public class CNV20120907
 			System.err.println("No bam defined");
 			return;
 			}
+		SAMFileReader.setDefaultValidationStringency(SAMFileReader.ValidationStringency.LENIENT);
+
 		while(optind!=args.length)
 			{
 			BamBuffer buf=new BamBuffer();
 			buf.file=new File(args[optind++]);
 			LOG.info("opening "+buf.file);
 			buf.samReader=new SAMFileReader(buf.file);
-			buf.samReader.setDefaultValidationStringency(SAMFileReader.ValidationStringency.LENIENT);
+			buf.samReader.setValidationStringency(SAMFileReader.ValidationStringency.LENIENT);
 			this.bams.add(buf);
 			}
 		//this.test();
