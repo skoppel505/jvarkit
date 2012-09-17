@@ -25,6 +25,7 @@ public class CigarAlignment
 	private SAMRecord record;
 	private byte bases[]=null;
 	private byte qualities[]=null;
+	private int repeat_index;
 	
 	private CigarAlignment(MyIterator iter)
 		{
@@ -32,6 +33,7 @@ public class CigarAlignment
 		this.readPos0=iter.readPos0;
 		this.cigarElement=iter.cigarElement;
 		this.record=iter.record;
+		this.repeat_index=iter.repeat_index;
 		}
 	
 	public SAMRecord getSAMRecord()
@@ -48,6 +50,12 @@ public class CigarAlignment
 		{
 		return readPos0;
 		}
+	
+	public int getIndexInCigarElement()
+		{
+		return this.repeat_index;
+		}
+	
 	public CigarElement getCigarElement()
 		{
 		return cigarElement;
@@ -61,7 +69,7 @@ public class CigarAlignment
 		{
 		return getCigarElement().getLength();
 		}
-	/** some bases in the read does not exists in the ref = deletion in the read */
+	/** base in the read doesn't exists in the REFERENCE. Extra bases in the read */
 	public boolean isInsertRef()
 		{
 		switch(getCigarOperator())
@@ -71,7 +79,7 @@ public class CigarAlignment
 			}
 		}
 	
-	/** some bases in the ref does not exists in the read= insertion in the read */
+	/**  base in the ref doesn't exists in the READ. Extra bases in the REF */
 	public boolean isDeletionRef()
 		{
 		switch(getCigarOperator())
