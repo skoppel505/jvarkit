@@ -19,9 +19,38 @@
 </path>
 
 
-<target name="all" depends="dist/cnv20120907.jar">
+<target name="all" depends="dist/invert20120917,dist/cnv20120907.jar">
 </target>
 
+
+<target name="dist/invert20120917" >
+	   <mkdir dir="tmp"/>
+	   <mkdir dir="dist"/>
+	   
+	   
+	   
+	   <javac destdir="tmp" includeAntRuntime="false" debug="true">
+	   		<src path="src/main/java"/>
+	   		<classpath refid="common.libs"/>
+	   		<include name="**/Invert20120917.java"/>
+	   		
+	   </javac>
+	   
+		<pathconvert property="manifest_cp" pathsep=" " >
+			 <path refid="common.libs"/>
+		</pathconvert>  
+	   
+	   <jar jarfile="dist/invert20120917">
+		     <fileset dir="tmp" />
+		     <manifest>
+		       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.invert20120917.Invert20120917"/>
+		       <attribute name="Class-Path" value="${manifest_cp}"/>
+		     </manifest>
+	 	</jar>
+	   
+	    <delete dir="tmp"/>
+</target>
+	
  <target name="dist/cnv20120907.jar" >
    <mkdir dir="tmp"/>
    <mkdir dir="dist"/>
