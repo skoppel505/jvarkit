@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema"
+	targetNamespace="http://www.example.org/ngsproject"
+	xmlns:tns="http://www.example.org/ngsproject"
+	elementFormDefault="qualified">
+
+    <complexType name="sampleType">
+    	<sequence>
+    		<element name="label" type="string"/>
+    		<element name="description" type="string"/>
+        </sequence>
+        <attribute name="id" type="ID"/>
+    </complexType>
+
+
+    <complexType name="referenceType">
+    	<sequence>
+    		<element name="label" type="string"/>
+    		<element name="description" type="string"/>
+    		<element name="path" type="string"/>
+    	</sequence>
+    	<attribute name="id" type="ID"/>
+    </complexType>
+
+    <complexType name="bamType">
+    	<sequence>
+    		<element name="label" type="string" minOccurs="0"/>
+    		<element name="description" type="string" minOccurs="0"/>
+    		<element name="path" type="string"/>
+    		<element name="reference" type="IDREF"/>
+    		<element name="sample" type="IDREF"/>
+    	</sequence>
+    	<attribute name="id" type="ID"/>
+    </complexType>
+
+
+
+    <complexType name="projectType">
+    	<sequence>
+    		<element name="label" type="string"/>
+    		<element name="description" type="string"/>
+    		<element name="bams" type="IDREF" minOccurs="1" maxOccurs="100"/>
+    	</sequence>
+    	<attribute name="id" type="ID"/>
+    </complexType>
+
+
+    <complexType name="NGSProjectType">
+    	<sequence>
+    		<element name="references">
+    			<complexType>
+    				<sequence>
+    					<element name="reference" type="tns:referenceType"/>
+    				</sequence>
+    			</complexType>
+    		</element>
+    		<element name="samples">
+    			<complexType>
+    				<sequence>
+    					<element name="sample" type="tns:sampleType"/>
+    				</sequence>
+    			</complexType>
+    		</element>
+    		<element name="bams">
+    			<complexType>
+    				<sequence>
+    					<element name="bam" type="tns:bamType"/>
+    				</sequence>
+    			</complexType>
+    		</element>
+    		<element name="projects">
+    			<complexType>
+    				<sequence>
+    					<element name="project" type="tns:projectType"/>
+    				</sequence>
+    			</complexType>
+    		</element>
+    	</sequence>
+    </complexType>
+
+
+    <element name="NGSProject" type="tns:NGSProjectType"></element>
+
+
+</schema>
