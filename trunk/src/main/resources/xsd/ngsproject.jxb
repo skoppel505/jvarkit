@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jxb:bindings 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns:xjc="http://java.sun.com/xml/ns/jaxb/xjc"
+  xmlns:jxb="http://java.sun.com/xml/ns/jaxb"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  jxb:version="2.1"
+  >
+  <jxb:bindings schemaLocation="ngsproject.xsd">
+  	 <jxb:bindings node="/xs:schema/xs:complexType[@name='bamType']/xs:sequence">
+		<jxb:bindings node="xs:element[@name='sample']">
+  	 	   <jxb:property>
+                <jxb:baseType name="SampleType"/>
+           </jxb:property>
+		</jxb:bindings>
+		<jxb:bindings node="xs:element[@name='reference']">
+  	 	   <jxb:property>
+                <jxb:baseType name="ReferenceType"/>
+           </jxb:property>
+		</jxb:bindings>
+  	 </jxb:bindings>
+
+	<jxb:bindings node="/xs:schema/xs:complexType[@name='projectType']/xs:sequence">
+		<jxb:bindings node="xs:element[@name='bams']">
+  	 	   <jxb:property collectionType="java.util.ArrayList">
+				 <jxb:baseType name="BamType"/>
+           </jxb:property>
+		</jxb:bindings>
+  	 </jxb:bindings>
+  </jxb:bindings>
+
+
+</jxb:bindings>
