@@ -78,5 +78,15 @@
    
     <delete dir="tmp"/>
  </target>
+	
+<target name="x">
+	 <exec executable="xjc">
+	    <arg value="-d"/> <arg value="src/main/java"/>
+	    <arg value="-p"/> <arg value="fr.inserm.umr1087.jvarkit.ngsproject"/>
+	 	<arg value="-b"/> <arg value="src/main/resources/xsd/ngsproject.jxb"/>
+
+	    <arg value="src/main/resources/xsd/ngsproject.xsd"/>
+	  </exec>
+</target>
 
 </project>
