@@ -19,9 +19,36 @@
 </path>
 
 
-<target name="all" depends="dist/invert20120917,dist/cnv20120907.jar">
+<target name="all" depends="dist/cluster20120920,dist/invert20120917,dist/cnv20120907.jar">
 </target>
 
+<target name="dist/cluster20120920" >
+	   <mkdir dir="tmp"/>
+	   <mkdir dir="dist"/>
+	   
+	   
+	   
+	   <javac destdir="tmp" includeAntRuntime="false" debug="true">
+	   		<src path="src/main/java"/>
+	   		<classpath refid="picard.lib"/>
+	   		<include name="**/Cluster20120920.java"/>
+	   		
+	   </javac>
+	   
+		<pathconvert property="manifest_cp" pathsep=" " >
+			 <path refid="picard.lib"/>
+		</pathconvert>  
+	   
+	   <jar jarfile="dist/cluster20120920.jar">
+		     <fileset dir="tmp" />
+		     <manifest>
+		       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.cluster20120920.Cluster20120920"/>
+		       <attribute name="Class-Path" value="${manifest_cp}"/>
+		     </manifest>
+	 	</jar>
+	   
+	    <delete dir="tmp"/>
+</target>
 
 <target name="dist/invert20120917" >
 	   <mkdir dir="tmp"/>
