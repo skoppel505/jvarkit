@@ -1,16 +1,26 @@
 package fr.inserm.umr1087.jvarkit.tools.cnv20120907;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
+import org.apache.commons.math.MathException;
+import org.apache.commons.math.analysis.interpolation.LoessInterpolator;
 import org.broad.igv.bbfile.BBFileReader;
 import org.broad.igv.bbfile.BigWigIterator;
 import org.broad.igv.bbfile.WigItem;
 
+import fr.inserm.umr1087.jvarkit.io.TupleBinding;
 import fr.inserm.umr1087.jvarkit.util.bin.DefaultBinList;
 import fr.inserm.umr1087.jvarkit.util.bin.Overlap;
 import fr.inserm.umr1087.jvarkit.util.intervalparser.IntervalParser;
@@ -44,6 +54,7 @@ public class CNV20120907
 	private List<WigBuffer> bbInput=new ArrayList<WigBuffer>();
 	private List<QualCount> qual2count=new ArrayList<QualCount>();
 	private Interval targetInterval=null;
+	private PrintStream output=System.out;
 	
 	private class WigBuffer
 		{
@@ -220,7 +231,88 @@ public class CNV20120907
 		}
 
 	private ReferenceBuffer referenceBuffer=new ReferenceBuffer();
+	
+	private static class DataRow
+		{
+		String chrom;
+		int chromStart=0;
+		int chromEnd=0;
+		double gc_percent=0;
+		double wigs[];
+		double depths[];
+		
+		void print(PrintStream out)
+			{
+			/** chromosome start-end*/
+			out.print(this.chrom);
+			out.print('\t');
+			out.print(chromStart);
+			out.print('\t');
+			out.print(chromEnd);
+			
+			/** GC% */
+			out.print('\t');
+			out.print(gc_percent);
+			
+			/** loop over the big files */
+			for(double wigV: this.wigs)
+				{
+				out.print('\t');
+				out.printf("%.2f",wigV);
+				}
 
+			
+			/** get coverage */
+			for(double d:depths)
+				{
+				out.print('\t');
+				out.printf("%.2f",d);
+				}
+			out.println();
+			}
+		}
+	
+	
+	private class DataRowBinding implements TupleBinding<DataRow>
+		{
+		@Override
+		public DataRow readObject(DataInputStream in) throws IOException
+			{
+			DataRow row=new DataRow();
+			row.chrom=in.readUTF();
+			row.chromStart=in.readInt();
+			row.chromEnd=in.readInt();
+			row.gc_percent=in.readDouble();
+			int n=in.readInt();
+			row.wigs=new double[n];
+			for(int i=0;i< n;++i) row.wigs[i]=in.readDouble();
+			n=in.readInt();
+			row.depths=new double[n];
+			for(int i=0;i< n;++i) row.depths[i]=in.readDouble();
+			return row;
+			}
+		@Override
+		public void writeObject(DataOutputStream out, DataRow row)
+				throws IOException
+			{
+			out.writeUTF(row.chrom);
+			out.writeInt(row.chromStart);
+			out.writeInt(row.chromEnd);
+			out.writeDouble(row.gc_percent);
+			out.writeInt(row.wigs.length);
+			for(int i=0;i< row.wigs.length ;++i)
+				{
+				out.writeDouble(row.wigs[i]);
+				}
+			out.writeInt(row.depths.length);
+			for(int i=0;i< row.depths.length ;++i)
+				{
+				out.writeDouble(row.depths[i]);
+				}
+			}
+		}
+	private DataRowBinding dataRowBinding=new DataRowBinding();
+	
 	private CNV20120907()
 		{
 		
@@ -260,20 +352,99 @@ public class CNV20120907
 		System.exit(0);
 		}
 
+	private void writeDataRow(DataRow row)
+		{
+		row.print(this.output);
+		}
+	
+	
+	
+	private void redonRoutine() throws IOException,MathException
+		{
+		File dataFile=null;//TODO
+		LoessInterpolator loessInterpolator=new LoessInterpolator();
+		SAMSequenceDictionary 	dict=this.reference.getSequenceDictionary();
+		String prevChrom=null;
+		DataInputStream dataIn=new DataInputStream(new FileInputStream(dataFile));
+		List<DataRow> rows=new ArrayList<CNV20120907.DataRow>();
+		for(;;)
+			{
+			DataRow row=null;
+			if(dataIn.available()>0)
+				{
+				row=this.dataRowBinding.readObject(dataIn);
+				}
+			if((row==null || !row.chrom.equals(prevChrom)) && !rows.isEmpty()) 
+				{
+				double xval[]=new double[rows.size()];
+				double yval[]=new double[rows.size()];
+				
+				int col=0;
+				for(BamBuffer r:bams)
+					{
+					for(int qualIndex=0;qualIndex< this.qual2count.size();++qualIndex)
+						{
+						for(int i=0;i< rows.size();++i)
+							{
+							xval[i]=rows.get(i).depths[col];
+							yval[i]=rows.get(i).gc_percent;
+							}
+						
+						col++;
+						}
+					}
+				rows.clear();
+				}
+			if(row==null) break;
+			rows.add(row);
+			}
+		dataIn.close();
+		
+		for(SAMSequenceRecord chrom: dict.getSequences())
+			{
+			Count c=chrom2count.get(chrom.getSequenceName());
+			if(c.count==0) continue;
+			double xval[]=new double[c.count];
+			double yval[]=new double[c.count];
+			dataIn=new DataInputStream(new FileInputStream(dataFile));
+			int rowIndex=0;
+			while(rowIndex<c.count)
+				{
+				DataRow row=this.dataRowBinding.readObject(dataIn);
+				if(!row.chrom.equals(chrom.getSequenceName())) continue;
+				
+				xval[rowIndex]=(row.chromStart+row.chromEnd)/2.0;
+				yval[rowIndex]=row.gc_percent;
+				
+				++rowIndex;
+				}
+			dataIn.close();
+			if(rowIndex!=c.count) throw new RuntimeException();
+			
+			double y2val[]=loessInterpolator.smooth(xval, yval);
+			}
+		}
 	
 	private void run() throws Exception
 		{
-		System.out.print("#chrom\tchromStart\tchromEnd\tGC%");
+		this.output.print("#chrom\tchromStart\tchromEnd\tGC%");
 		for(WigBuffer wigBuffer: this.bbInput)
 			{
-			System.out.print("\t"+wigBuffer.bw.getBBFilePath());
+			this.output.print("\t"+wigBuffer.bw.getBBFilePath());
 			}
 		for(BamBuffer b: this.bams)
 			{
-			System.out.print("\t"+b.file);
-			}	
+			for(int qualIndex=0;qualIndex< this.qual2count.size();++qualIndex)
+				{
+				this.output.print("\t"+b.file+"[Q="+this.qual2count.get(qualIndex).qual+"]");
+				}
+			}
+		this.output.println();
 		
-		System.out.println();
+		DataRow dataRow=new DataRow();
+		dataRow.wigs=new double[this.bbInput.size()];
+		dataRow.depths=new double[this.bams.size()*this.qual2count.size()];
+		
 		SAMSequenceDictionary 	dict=this.reference.getSequenceDictionary();
 		for(SAMSequenceRecord chrom: dict.getSequences())
 			{
@@ -282,13 +453,14 @@ public class CNV20120907
 				continue;
 				}
 			LOG.info("chrom:="+chrom.getSequenceName()+"/"+chrom.getSequenceLength());
-			int  start=(targetInterval!=null?targetInterval.getStart():0);
-			while(start+this.windowSize<=
+			dataRow.chrom=chrom.getSequenceName();
+			dataRow.chromStart=(targetInterval!=null?targetInterval.getStart():0);
+			while(dataRow.chromStart+this.windowSize<=
 					(targetInterval!=null?targetInterval.getEnd():chrom.getSequenceLength()))
 				{
 				int gc=0;
 				int N=0;
-				for(int i=start;N==0 && i<start+this.windowSize;++i)
+				for(int i=dataRow.chromStart;N==0 && i<dataRow.chromStart+this.windowSize;++i)
 					{
 					byte base=referenceBuffer.getBaseAt(chrom.getSequenceName(), i);
 					switch(base)
@@ -302,53 +474,42 @@ public class CNV20120907
 					}
 				if(N>0)
 					{
-					++start;
+					++dataRow.chromStart;
 					continue;
 					}
+				dataRow.chromEnd=dataRow.chromStart+windowSize;
+				dataRow.gc_percent=gc/(double)windowSize;
 				
-				/** chromosome start-end*/
-				System.out.print(chrom.getSequenceName());
-				System.out.print('\t');
-				System.out.print(start);
-				System.out.print('\t');
-				System.out.print(start+windowSize);
 				
-				/** GC% */
-				System.out.print('\t');
-				System.out.print(gc/(double)windowSize);
-				
+				int loopIdx=0;
 				/** loop over the big files */
 				for(WigBuffer wigBuffer: this.bbInput)
 					{
-					
-					System.out.print('\t');
-					System.out.printf("%.2f",wigBuffer.getMean(
-							chrom.getSequenceName(),
-							start,
-							start+windowSize
-							));
+					dataRow.wigs[loopIdx++]= wigBuffer.getMean(
+							dataRow.chrom,
+							dataRow.chromStart,
+							dataRow.chromEnd
+							);
 						
 					}
-
 				
+				loopIdx=0;
 				/** get coverage */
 				for(BamBuffer r:bams)
 					{
 					for(int qualIndex=0;qualIndex< this.qual2count.size();++qualIndex)
 						{
-						System.out.print('\t');
-						System.out.printf("%.2f",r.getDepth(
+						dataRow.wigs[loopIdx++]=r.getDepth(
 								qualIndex,
-								chrom.getSequenceName(),
-								start,
-								start+windowSize
-								));
+								dataRow.chrom,
+								dataRow.chromStart,
+								dataRow.chromEnd
+								);
 						}
-					}
+					}				
+				writeDataRow(dataRow);
 				
-				System.out.println();
-				
-				start+=this.windowStep;
+				dataRow.chromStart+=this.windowStep;
 				}
 			}
 		}
@@ -410,9 +571,8 @@ public class CNV20120907
 				if(this.targetInterval==null)
 					{
 					System.err.println("bad range:"+args[optind]);
-					}
-				int len=this.targetInterval.getEnd()-this.targetInterval.getStart();
-				
+					return;
+					}				
 				}
 			else if(args[optind].equals("--"))
 				{

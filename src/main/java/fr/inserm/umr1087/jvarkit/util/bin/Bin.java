@@ -9,7 +9,7 @@ private static final int MAX_BIN = 37450;
 
 static private final int binOffsets[] = {512+64+8+1, 64+8+1, 8+1, 1, 0};
 
-static int bin(int start,int end)
+static public int bin(int start,int end)
 	{
 	final int _binFirstShift=17;
 	final int _binNextShift=3;
@@ -27,7 +27,7 @@ static int bin(int start,int end)
 	throw new IllegalArgumentException("out of range in findBin (max is 512M):"+ start+"-"+end);
 	}
 
-static List<Integer> bins(int chromStart,int chromEnd)
+static public List<Integer> bins(int chromStart,int chromEnd)
 	{
 	int k, end = chromEnd;
 	if (chromStart >= end) return Collections.emptyList();
