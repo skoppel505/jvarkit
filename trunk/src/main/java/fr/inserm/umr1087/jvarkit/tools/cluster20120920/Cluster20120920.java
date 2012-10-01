@@ -11,7 +11,6 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import net.sf.picard.util.Interval;
-import net.sf.picard.util.IntervalList;
 import net.sf.samtools.SAMFileReader;
 import net.sf.samtools.SAMRecord;
 import net.sf.samtools.SAMRecordIterator;

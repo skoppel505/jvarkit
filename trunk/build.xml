@@ -12,10 +12,21 @@
       <pathelement path="${picard.jar}"/>
       <pathelement path="${sam.jar}"/>
 </path>
-
+	
+<path id="bdb.lib">
+      <pathelement path="${berkeleydb.jar}"/>
+</path>
+	
+<path id="math.lib">
+      <pathelement path="${common.math.jar}"/>
+</path>
+	
+	
 <path id="common.libs">
      <path refid="picard.lib"/>
      <path refid="bigwig.lib"/>
+     <path refid="bdb.lib"/>
+	 <path refid="math.lib"/>
 </path>
 
 
@@ -87,7 +98,7 @@
    <javac destdir="tmp" includeAntRuntime="false" debug="true">
    		<src path="src/main/java"/>
    		<classpath refid="common.libs"/>
-   		<include name="**/CNV20120907.java"/>
+   		<include name="**/CNV20120927.java"/>
    		
    </javac>
    
@@ -98,22 +109,36 @@
    <jar jarfile="dist/cnv20120907.jar">
 	     <fileset dir="tmp" />
 	     <manifest>
-	       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.cnv20120907.CNV20120907"/>
+	       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.cnv20120907.CNV20120927"/>
 	       <attribute name="Class-Path" value="${manifest_cp}"/>
 	     </manifest>
  	</jar>
    
     <delete dir="tmp"/>
  </target>
+
+
+<target name="blast">
+	 <exec executable="xjc">
+	    <arg value="-d"/> <arg value="src/main/java"/>
+	    <arg value="-p"/> <arg value="gov.nih.nlm.ncbi.blast"/>
+	    <arg value="-httpproxy"/> <arg value="proxy-upgrade.univ-nantes.prive:3128"/>
+	    <arg value="-dtd"/>
+	    <arg value="http://www.ncbi.nlm.nih.gov/dtd/NCBI_BlastOutput.dtd"/>
+	  </exec>
+</target>
 	
 <target name="x">
 	 <exec executable="xjc">
 	    <arg value="-d"/> <arg value="src/main/java"/>
 	    <arg value="-p"/> <arg value="fr.inserm.umr1087.jvarkit.ngsproject"/>
-	 	<arg value="-b"/> <arg value="src/main/resources/xsd/ngsproject.jxb"/>
+	    <arg value="-b"/> <arg value="src/main/resources/xsd/ngsproject.jxb"/>
 
 	    <arg value="src/main/resources/xsd/ngsproject.xsd"/>
 	  </exec>
 </target>
+
+
+
 
 </project>
