@@ -5,15 +5,16 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Logger;
@@ -22,7 +23,6 @@ import java.util.zip.ZipOutputStream;
 
 import javax.imageio.ImageIO;
 
-import org.apache.commons.math.analysis.interpolation.LoessInterpolator;
 
 import com.sleepycat.je.Cursor;
 import com.sleepycat.je.Database;
@@ -33,6 +33,7 @@ import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.OperationStatus;
 import com.sleepycat.je.Transaction;
 
+import fr.inserm.umr1087.jvarkit.r.RLoess;
 import fr.inserm.umr1087.jvarkit.segments.TidStartEnd;
 import fr.inserm.umr1087.jvarkit.segments.bdb.TidStartEndBinding;
 import fr.inserm.umr1087.jvarkit.segments.bdb.TidStartEndSorter;
@@ -54,15 +55,6 @@ public class CNV20120927
 	private static final Logger LOG=Logger.getLogger("fr.inserm.umr1087.jvarkit");
 	private int minQual=30;
 	private TidStartEndBinding tidStartEndBinding=new TidStartEndBinding();	
-	
-	private enum Step {
-		CALC_LOESS,
-		APPLY_LOESS_AND_GET_MIN,
-		SUBSTRACT_MIN_AND_GET_MEDIAN,
-		DIV_MEDIAN,
-		NORMALIZE_MEDIAN,
-		RUN_MED
-		}
 	
 	
 	private ReferenceSequenceFile reference=null;
@@ -86,44 +78,6 @@ public class CNV20120927
 			}
 		}
 	
-	private static class Spline
-		{
-		double x_val[];
-		double y_val[];
-		Spline(int n)
-			{
-			x_val=new double[n];
-			y_val=new double[n];
-			}
-		private int lowerBound(double L)
-			{
-			int first=0;
-		    int len = x_val.length;
-		    while (len > 0)
-		            {
-		            int half = len / 2;
-		            int middle = first + half;
-		
-		            if ( x_val[middle]< L  )
-		                    {
-		                    first = middle + 1;
-		                    len -= half + 1;
-		                    }
-		            else
-		                    {
-		                    len = half;
-		                    }
-		            }
-		    return first;
-			}
-
-		double value(double x)
-			{
-			int n=lowerBound(x);
-			if(n>=y_val.length) return y_val[y_val.length-1];
-			return y_val[n];
-			}	
-		}
 
 
 	private CNV20120927()
@@ -178,6 +132,7 @@ public class CNV20120927
 	
 	private void dump(File file) throws IOException
 		{
+		LOG.info("dump data to "+file);
 		DatabaseEntry key=new DatabaseEntry();
 		DatabaseEntry data=new DatabaseEntry();
 		Cursor c=this.region2depths.openCursor(txn, null);
@@ -213,6 +168,7 @@ public class CNV20120927
 		pw.close();
 		}
 	
+	@SuppressWarnings("unused")
 	private void dumpGnuplot(File file) throws IOException
 		{
 		
@@ -279,10 +235,310 @@ public class CNV20120927
 		zout.close();
 		}
 	
+	private abstract class ForEachRow
+		{
+		private Cursor c;
+		DatabaseEntry key;
+		DatabaseEntry data;
+		int bamIndex=-1;
+		TidStartEnd currSeg;
+		CNVRow currRow;
+		int rowIndex;
+
+	
+		
+		public void scanChromosome(int tid) throws Exception
+			{
+			LOG.info("Scan bam:"+this.bamIndex+" tid:"+tid+" class:"+getClass());
+			key=new DatabaseEntry();
+			data=new DatabaseEntry();
+
+			this.c=CNV20120927.this.region2depths.openCursor(txn, null);
+			boolean first=true;
+			this.rowIndex=-1;
+			for(;;)
+				{
+				OperationStatus status;
+				if(first) 
+					{
+					first=false;
+					if(tid==-1)
+						{
+						status=c.getFirst(key, data,null);
+						}
+					else
+						{
+						TidStartEnd init=new TidStartEnd(tid,
+								0,
+								0
+								);
+					
+						CNV20120927.this.tidStartEndBinding.objectToEntry(init, key);
+						status=c.getSearchKeyRange(key, data,null);
+						
+						}
+					}
+				else
+					{
+					status=c.getNext(key, data,null);
+					}
+				if(status!=OperationStatus.SUCCESS) break;
+				this.currSeg=CNV20120927.this.tidStartEndBinding.entryToObject(key);
+				if(tid!=-1)
+					{
+					if(this.currSeg.getChromId()<tid) continue;
+					if(this.currSeg.getChromId()>tid) break;
+					}
+				++rowIndex;
+
+				this.currRow=CNVRow.BINDING.entryToObject(data);
+				apply();
+				}
+			c.close();
+			}
+		public void update()
+			{
+			CNVRow.BINDING.objectToEntry(this.currRow,data);
+			if(c.putCurrent(data)!=OperationStatus.SUCCESS)
+				{
+				c.close();
+				close();
+				throw new RuntimeException("Cannot update "+this.currRow);
+				}
+			}
+		public abstract void apply() throws Exception;
+		}
+	
+	private class ForEachRowAccumulateData
+		extends ForEachRow
+		{
+		List<Double> vData=new ArrayList<Double>();
+		ForEachRowAccumulateData(int bamIndex)
+			{
+			super.bamIndex=bamIndex;
+			}
+		@Override
+		public void scanChromosome(int tid) throws Exception
+			{
+			vData.clear();
+			super.scanChromosome(tid);
+			}
+		@Override
+		public void apply() throws Exception {
+			vData.add(currRow.getDepth(this.bamIndex));
+			}
+		}
+	
+	private class ForEachRowCalcDepth
+		extends ForEachRow
+		{
+		short depth0[];
+		ForEachRowCalcDepth(int bamIndex,short depth0[])
+			{
+			this.depth0=depth0;
+			super.bamIndex=bamIndex;
+			}
+		@Override
+		public void apply() throws Exception
+			{
+			int count=0;
+			double sum=0.0;
+			for(int i=this.currSeg.getStart();i<this.currSeg.getEnd() &&
+					i < depth0.length;
+					++i)
+				{
+				sum+=depth0[i];
+				++count;
+				}
+			
+			CNVRow row=CNVRow.BINDING.entryToObject(data);
+			row.setDepth(this.bamIndex, (count==0?Double.NaN:sum/count));
+			update();
+			}
+		}
+	
+	private class ForEachRowCalcLoess
+		extends ForEachRow
+		{
+		private RLoess rLoessProc;
+		List<Double> vData=null;
+		ForEachRowCalcLoess(int bamIndex)
+			{
+			super.bamIndex=bamIndex;
+			}
+		@Override
+		public void scanChromosome(int tid) throws Exception
+			{
+			this.rLoessProc=new RLoess();
+			super.scanChromosome(tid);
+			this.vData=rLoessProc.smooth();
+			}
+		@Override
+		public void apply() throws Exception
+			{
+			rLoessProc.add(
+					this.currRow.getGcPercent(),
+					this.currRow.getDepth(this.bamIndex)
+					);
+			}
+		}
+	
+	
+	
+	private class ForEachRowApplyLoessAndGetMin
+	extends ForEachRow
+		{
+		List<Double> vData;
+		double minDepth;
+		ForEachRowApplyLoessAndGetMin(int bamIndex,List<Double> vData)
+			{
+			super.bamIndex=bamIndex;
+			this.vData=vData;
+			}
+		@Override
+		public void scanChromosome(int tid) throws Exception
+			{
+			this.minDepth=Double.MAX_VALUE;
+			super.scanChromosome(tid);
+			}
+		@Override
+		public void apply() throws Exception
+			{
+			double newDepth=vData.get(rowIndex);
+			if(minDepth> newDepth) minDepth=newDepth;
+			currRow.setDepth(this.bamIndex, newDepth);
+			update();
+			}
+		}
+	
+	
+	
+	
+	private class ForEachRowSubstractMinAndGetMedian
+	extends ForEachRowAccumulateData
+		{
+		private double minDepth;
+		double medianValue;
+		ForEachRowSubstractMinAndGetMedian(int bamIndex,double minDepth)
+			{
+			super(bamIndex);
+			this.minDepth=minDepth;
+			}
+		@Override
+		public void scanChromosome(int tid) throws Exception
+			{
+			super.scanChromosome(tid);
+			Collections.sort(vData);
+			medianValue = super.vData.get(vData.size()/2);
+			vData.clear();
+			}
+		@Override
+		public void apply() throws Exception
+			{
+			double depth=currRow.getDepth(this.bamIndex);
+			double newDepth=depth-this.minDepth;
+			super.vData.add(newDepth);
+			currRow.setDepth(this.bamIndex, newDepth);
+			update();
+			}
+		}
+	
+	
+	
+	private class ForEachRowDivMedian
+	extends ForEachRow
+		{
+		double medianValue;
+		ForEachRowDivMedian(int bamIndex,double medianValue)
+			{
+			super.bamIndex=bamIndex;
+			this.medianValue=medianValue;
+			}
+		
+		@Override
+		public void apply() throws Exception
+			{
+			double depth=currRow.getDepth(this.bamIndex);
+			double newDepth=depth/medianValue;
+			currRow.setDepth(this.bamIndex, newDepth);
+			update();
+			}
+		}
+	
+	private class ForEachRowHorizontalMedian
+	extends ForEachRow
+		{
+		double cutOff;
+		ForEachRowHorizontalMedian(double cutOff)
+			{
+			this.cutOff=cutOff;
+			}
+		
+		@Override
+		public void apply() throws Exception
+			{
+			double v[]=new double[CNV20120927.this.bams.size()-1];
+			for(int i=1;i<CNV20120927.this.bams.size();++i)
+				{
+				v[i-1]=currRow.getDepth(i);
+				}
+			Arrays.sort(v);
+			double mediane=v[v.length/2];
+			if(mediane>this.cutOff)
+				{
+				for(int i=0;i< CNV20120927.this.bams.size();++i)
+					{
+					currRow.setDepth(i, currRow.getDepth(i)/mediane);
+					}
+				update();
+				}
+			else
+				{
+				super.c.delete();
+				}
+			}
+		}
+	
+	private class ForEachRowMed
+	extends ForEachRow
+		{
+		List<Double> vData;
+		int margin;
+		ForEachRowMed(int bamIndex,List<Double> vData,int margin)
+			{
+			super.bamIndex=bamIndex;
+			this.vData=vData;
+			this.margin=margin;
+			}
+		
+		@Override
+		public void apply() throws Exception
+			{
+			double newDepth=0;
+			
+			if(vData.get(rowIndex)!=currRow.getDepth(bamIndex))
+				{
+				throw new RuntimeException("Err "+vData.get(rowIndex)+"/"+currRow.getDepth(bamIndex));
+				}
+			List<Double> runmed=new ArrayList<Double>(margin*2+1);
+			for(int i=Math.max(0,rowIndex-margin);
+					i<= rowIndex+margin && i< vData.size();
+					++i)
+				{
+				runmed.add(vData.get(i));
+				}
+			Collections.sort(runmed);
+			newDepth=Math.log(runmed.get(runmed.size()/2));
+			if(Double.isNaN(newDepth)) newDepth=0;
+			
+			currRow.setDepth(this.bamIndex, newDepth);
+			update();
+			}
+		}
+	
 	private void run() throws Exception
 		{
 		open();
-		LoessInterpolator loessInterpolator=new LoessInterpolator();
 		DatabaseEntry key=new DatabaseEntry();
 		DatabaseEntry data=new DatabaseEntry();
 		SAMSequenceDictionary 	dict=this.reference.getSequenceDictionary();
@@ -390,310 +646,63 @@ public class CNV20120927
 		                }
 		            
 		            sf.close();
-		            
-		            /* calc the mean depth at each window */
-					key=new DatabaseEntry();
-					data=new DatabaseEntry();
-					Cursor c=this.region2depths.openCursor(txn, null);
-					boolean first=false;
-					
-					for(;;)
-						{
-						OperationStatus status;
-						if(first) 
-							{
-							first=false;
-							TidStartEnd init=new TidStartEnd(chrom.getSequenceIndex(),
-										0,
-										0
-										);
-							
-							this.tidStartEndBinding.objectToEntry(init, key);
-							status=c.getSearchKeyRange(key, data,null);
-							LOG.info("starting with "+this.tidStartEndBinding.entryToObject(key));
-							}
-						else
-							{
-							status=c.getNext(key, data,null);
-							}
-						if(status!=OperationStatus.SUCCESS) break;
-						TidStartEnd seg=this.tidStartEndBinding.entryToObject(key);
-						if(seg.getChromId()<chrom.getSequenceIndex()) continue;
-						if(seg.getChromId()>chrom.getSequenceIndex()) break;
-						
-						int count=0;
-						double sum=0.0;
-						for(int i=seg.getStart();i<seg.getEnd() &&
-								i < depth0.length;
-								++i)
-							{
-							sum+=depth0[i];
-							++count;
-							}
-						
-						CNVRow row=CNVRow.BINDING.entryToObject(data);
-						row.setDepth(bx, (count==0?Double.NaN:sum/count));
-						CNVRow.BINDING.objectToEntry(row,data);
-						if(c.putCurrent(data)!=OperationStatus.SUCCESS)
-							{
-							c.close();
-							close();
-							throw new RuntimeException("Cannot update "+row);
-							}
-						}
-					
-					c.close();
+		            ForEachRow forEach=new ForEachRowCalcDepth(bx,depth0);
+		            forEach.scanChromosome(chrom.getSequenceIndex());
+		            forEach=null;
 					}
 			depth0=null;
 			}
 		
 		dump(new File("/commun/data/users/lindenb/_ignore.backup/jeter.tsv"));
 		
-		Cursor c=this.region2depths.openCursor(txn, null);
-		List<Point2D.Double> points=null;
-		OperationStatus status;
 		for(SAMSequenceRecord chrom: dict.getSequences())
 			{
 			if(targetInterval!=null && !chrom.getSequenceName().equals(targetInterval.getSequence())) continue;
-			
+			int tid=chrom.getSequenceIndex();
 			for(int bx=0;
 					bx< this.bams.size();
 					++bx)
 				{
+				ForEachRowCalcLoess calcLoess=new ForEachRowCalcLoess(bx);
+				calcLoess.scanChromosome(tid);
+				List<Double> vData=calcLoess.vData;
+				calcLoess=null;
+				
+				ForEachRowApplyLoessAndGetMin applyLoess=new ForEachRowApplyLoessAndGetMin(bx, vData);
+				applyLoess.scanChromosome(tid);
+				
+				double minDepth=applyLoess.minDepth;
+				applyLoess=null;
+				
+				ForEachRowSubstractMinAndGetMedian subMinMedian=new ForEachRowSubstractMinAndGetMedian(bx, minDepth);
+				subMinMedian.scanChromosome(tid);
+				double median=subMinMedian.medianValue;
+				subMinMedian=null;
+				
+				ForEachRowDivMedian divMedian=new ForEachRowDivMedian(bx,median);
+				divMedian.scanChromosome(tid);
+				}
+			ForEachRowHorizontalMedian forEachHorizontalMedian=new ForEachRowHorizontalMedian(0.2);
+			forEachHorizontalMedian.scanChromosome(tid);
+			forEachHorizontalMedian=null;
 			
-				Spline splineFun=null; 
-				double minDepth= Integer.MAX_VALUE;
-				List<Double> vData=null;
-				double medianValue=Double.NaN;
-				
-				/* do each step for the BAM */
-				for(Step step: Step.values())
-					{
-					LOG.info("step "+step+" "+this.bams.get(bx).file.getName());
-					key=new DatabaseEntry();
-					data=new DatabaseEntry();
-					int rowIndex=-1;
-					boolean first=true;
-					points=null;
-					
-					/* initialize this step */
-					switch(step)
-						{
-						case APPLY_LOESS_AND_GET_MIN:
-							{
-							minDepth= Double.MAX_VALUE;
-							break;
-							}
-						case CALC_LOESS:
-							{
-							points=new ArrayList<Point2D.Double>();
-							break;
-							}
-						case SUBSTRACT_MIN_AND_GET_MEDIAN:
-						case NORMALIZE_MEDIAN:
-							{
-							vData=new ArrayList<Double>();
-							break;
-							}
-						}
-					
-					/* loop over the key for this chromosome */
-					for(;;)
-						{
-					
-						if(first) 
-							{
-							first=false;
-							TidStartEnd init=new TidStartEnd(chrom.getSequenceIndex(), 0, 0);
-							this.tidStartEndBinding.objectToEntry(init, key);
-							status=c.getSearchKeyRange(key, data,null);
-							}
-						else
-							{
-							status=c.getNext(key, data,null);
-							}
-						if(status!=OperationStatus.SUCCESS) break;
-						TidStartEnd seg=this.tidStartEndBinding.entryToObject(key);
-						if(seg.getChromId()<chrom.getSequenceIndex()) continue;
-						if(seg.getChromId()>chrom.getSequenceIndex()) break;
-						++rowIndex;//initialized to '-1'
-						
-						CNVRow row=CNVRow.BINDING.entryToObject(data);
-						
-						
-						
-						switch(step)
-							{
-							case CALC_LOESS:
-								{
-								points.add(new Point2D.Double(
-									row.getDepth(bx),
-									row.getGcPercent()
-									));
-								break;
-								}
-							case APPLY_LOESS_AND_GET_MIN:
-							case SUBSTRACT_MIN_AND_GET_MEDIAN:
-							case DIV_MEDIAN:
-							case RUN_MED:
-								{
-								double newDepth=0;
-								switch(step)
-									{
-									case APPLY_LOESS_AND_GET_MIN:
-										{
-										newDepth=splineFun.value(row.getDepth(bx));
-										if(minDepth> newDepth) minDepth=newDepth;
-										break;
-										}
-									case SUBSTRACT_MIN_AND_GET_MEDIAN:
-										{	
-										newDepth= row.getDepth(bx)- minDepth;
-										vData.add(newDepth);
-										break;
-										}
-									case DIV_MEDIAN:
-										{
-										newDepth= row.getDepth(bx) / medianValue;
-										break;
-										}
-									case RUN_MED:
-										{
-										if(vData.get(rowIndex)!=row.getDepth(bx))
-											{
-											throw new RuntimeException("Err "+vData.get(rowIndex)+"/"+row.getDepth(bx));
-											}
-										List<Double> runmed=new ArrayList<Double>(11);
-										for(int i=Math.max(0,rowIndex-5);
-												i<= rowIndex+5 && i< vData.size();
-												++i)
-											{
-											runmed.add(vData.get(i));
-											}
-										Collections.sort(runmed);
-										newDepth=Math.log(runmed.get(runmed.size()/2));
-										if(Double.isNaN(newDepth)) newDepth=0;
-										break;
-										}
-									default: throw new RuntimeException();
-									}
-								row.setDepth(bx,newDepth);
-								CNVRow.BINDING.objectToEntry(row,data);
-								if(c.putCurrent(data)!=OperationStatus.SUCCESS)
-									{
-									c.close();
-									close();
-									throw new RuntimeException("Cannot update "+row);
-									}
-								break;
-								}
-							case NORMALIZE_MEDIAN:
-								{
-								if(bx==0)
-									{
-									double v[]=new double[this.bams.size()-1];
-									for(int i=1;i<this.bams.size();++i)
-										{
-										v[i-1]=row.getDepth(i);
-										}
-									Arrays.sort(v);
-									double mediane=v[v.length/2];
-									if(mediane>0.2)
-										{
-										for(int i=0;i< this.bams.size();++i)
-											{
-											row.setDepth(i, row.getDepth(i)/mediane);
-											}
-										CNVRow.BINDING.objectToEntry(row,data);
-										if(c.putCurrent(data)!=OperationStatus.SUCCESS)
-											{
-											c.close();
-											close();
-											throw new RuntimeException("Cannot update "+row);
-											}
-										}
-									else
-										{
-										c.delete();
-										break;//don't add value to vData below
-										}
-									}
-								vData.add(row.getDepth(bx));
-								break;
-								}
-							default: throw new RuntimeException(step.toString());
-							}
-						}
-					
-					
-					if(step==Step.CALC_LOESS && points.isEmpty()) break;
-					
-					/* post step processing */
-					switch(step)
-						{
-						case CALC_LOESS:
-							{
-							
-							Collections.sort(points,new Comparator<Point2D.Double>()
-									{
-									@Override
-									public int compare(Point2D.Double o1, Point2D.Double o2)
-										{
-										if(o1.getX()==o2.getX())
-											{
-											if(o1.getY()==o2.getY()) return 0;
-											return o1.getY() < o2.getY() ? -1  : 1 ;
-											}
-										return o1.getX() < o2.getX() ? -1  : 1 ;
-										}
-									});
-							splineFun= new Spline(points.size());
-							
-							for(int i=0;i< points.size();++i)
-								{
-								splineFun.x_val[i]=points.get(i).x;
-								splineFun.y_val[i]=points.get(i).y;
-								
-								if(i>0 && splineFun.x_val[i]<=splineFun.x_val[i-1])//loess plante si xi==x(i-1)
-									{
-									splineFun.x_val[i]=splineFun.x_val[i-1]+1E-9;
-									}
-								}
-							points=null;
-							splineFun.y_val=loessInterpolator.smooth(splineFun.x_val, splineFun.y_val);
-							break;
-							}
-						case APPLY_LOESS_AND_GET_MIN:
-							{
-							splineFun=null;
-							break;
-							}
-						case SUBSTRACT_MIN_AND_GET_MEDIAN:
-							{
-							Collections.sort(vData);
-							medianValue = vData.get(vData.size()/2);
-							vData=null;
-							break;
-							}
-						case RUN_MED:
-							{
-							vData=null;
-							break;
-							}
-						}	//end-switch
-					if(bx+1==bams.size())
-						{
-						dump(new File("/commun/data/users/lindenb/_ignore.backup/jeter."+step+".tsv"));
-						}
-					}
-				
-				
+			for(int bx=0;
+			bx< this.bams.size();
+			++bx)
+				{
+				ForEachRowAccumulateData forEachVData=new ForEachRowAccumulateData(bx);
+				forEachVData.scanChromosome(tid);
+				List<Double> vData=forEachVData.vData;
+				forEachVData=null;
+				ForEachRowMed forEachMed=new ForEachRowMed(bx, vData, 5);
+				forEachMed.scanChromosome(tid);
 				}
 			}
 		
-	
 		
-		
+		Cursor c=this.region2depths.openCursor(txn, null);
+		OperationStatus status;
+
 		for(int bx=0;
 			bx< this.bams.size();
 			++bx)
