@@ -820,7 +820,7 @@ public class CNV20120927
 			Graphics2DGenomeGraphDrawer drawer=new Graphics2DGenomeGraphDrawer(this.reference.getSequenceDictionary(),this.targetInterval);
 			drawer.setMinY(-3.0);
 			drawer.setMaxY(3.0);
-			BufferedImage img=drawer.createImage(BufferedImage.TYPE_INT_ARGB);
+			BufferedImage img=drawer.createImage(BufferedImage.TYPE_INT_RGB);
 			Graphics2D g=(Graphics2D)img.getGraphics();
 			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 			drawer.init(g);
@@ -844,11 +844,10 @@ public class CNV20120927
 				if(!row.containsNanDepth())
 					{
 				    double y=row.getDepth(bx);
-				    
 				    double pix_y= drawer.convertValueToPixelY(y);
 				    double pix_x= drawer.convertPositionToPixelX(tid, (chromStart+chromEnd)/2);
 				    Composite oldComposite=g.getComposite();
-				    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,0.3f));
+				    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,0.2f));
 				    g.setColor(Color.RED);
 				    g.fillOval((int)pix_x-2,(int)pix_y-2,5,5);
 				    g.setComposite(oldComposite);
