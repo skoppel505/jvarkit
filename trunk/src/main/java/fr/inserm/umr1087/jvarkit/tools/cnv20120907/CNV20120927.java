@@ -1,14 +1,13 @@
 package fr.inserm.umr1087.jvarkit.tools.cnv20120907;
 
+import java.awt.AlphaComposite;
 import java.awt.Color;
+import java.awt.Composite;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
-import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
@@ -85,6 +84,22 @@ public class CNV20120927
 		
 		}
 
+	
+	private static double log2(double num)
+		{
+		return (Math.log(num)/Math.log(2));
+		} 
+	
+	private static double calcMediane(List<Double> L)
+		{
+		if(L.size()==1) return L.get(0);
+		int mid=L.size()/2;
+		if(L.size()%2==0)
+			{
+			return (L.get(mid-1)+L.get(mid))/2.0;
+			}
+		return L.get(mid);
+		}
 	
 	private void open()
 		{
@@ -168,6 +183,35 @@ public class CNV20120927
 		pw.close();
 		}
 	
+	private void dump(File file,int bamIndex) throws IOException
+		{
+		LOG.info("dump data to "+file);
+		DatabaseEntry key=new DatabaseEntry();
+		DatabaseEntry data=new DatabaseEntry();
+		int nRows=0;
+		Cursor c=this.region2depths.openCursor(txn, null);
+		PrintWriter pw=new PrintWriter(file);
+		pw.println();
+		while(c.getNext(key, data, null)==OperationStatus.SUCCESS && nRows++<20)
+			{
+			TidStartEnd seg=this.tidStartEndBinding.entryToObject(key);
+			CNVRow row=CNVRow.BINDING.entryToObject(data);
+			
+			pw.print(
+					this.reference.getSequenceDictionary().getSequence(seg.getChromId()).getSequenceName()+
+					"\t"+seg.getStart()
+					);
+		
+			pw.print("\t"+row.getDepth(bamIndex));
+				
+			pw.println();
+			}
+		c.close();
+		pw.flush();
+		pw.close();
+		}
+	
+	
 	@SuppressWarnings("unused")
 	private void dumpGnuplot(File file) throws IOException
 		{
@@ -245,7 +289,10 @@ public class CNV20120927
 		CNVRow currRow;
 		int rowIndex;
 
-	
+		protected ForEachRow(int bamIndex)
+			{
+			this.bamIndex=bamIndex;
+			}
 		
 		public void scanChromosome(int tid) throws Exception
 			{
@@ -315,7 +362,7 @@ public class CNV20120927
 		List<Double> vData=new ArrayList<Double>();
 		ForEachRowAccumulateData(int bamIndex)
 			{
-			super.bamIndex=bamIndex;
+			super(bamIndex);
 			}
 		@Override
 		public void scanChromosome(int tid) throws Exception
@@ -335,8 +382,8 @@ public class CNV20120927
 		short depth0[];
 		ForEachRowCalcDepth(int bamIndex,short depth0[])
 			{
+			super(bamIndex);
 			this.depth0=depth0;
-			super.bamIndex=bamIndex;
 			}
 		@Override
 		public void apply() throws Exception
@@ -351,12 +398,17 @@ public class CNV20120927
 				++count;
 				}
 			
-			CNVRow row=CNVRow.BINDING.entryToObject(data);
-			row.setDepth(this.bamIndex, (count==0?Double.NaN:sum/count));
+			
+			currRow.setDepth(this.bamIndex, (count==0?Double.NaN:sum/count));
 			update();
 			}
 		}
 	
+	/****************************************************************************************
+	 * 
+	 * ForEachRowCalcLoess
+	 *
+	 */
 	private class ForEachRowCalcLoess
 		extends ForEachRow
 		{
@@ -364,35 +416,41 @@ public class CNV20120927
 		List<Double> vData=null;
 		ForEachRowCalcLoess(int bamIndex)
 			{
-			super.bamIndex=bamIndex;
+			super(bamIndex);
 			}
 		@Override
 		public void scanChromosome(int tid) throws Exception
 			{
+			LOG.info("scanning loess for bamidx="+this.bamIndex+" tid:"+tid);
 			this.rLoessProc=new RLoess();
 			super.scanChromosome(tid);
 			this.vData=rLoessProc.smooth();
+			LOG.info("CalcLoess: vData.size="+vData.size()+" rowIndex:"+this.rowIndex);
 			}
 		@Override
 		public void apply() throws Exception
 			{
 			rLoessProc.add(
 					this.currRow.getGcPercent(),
-					this.currRow.getDepth(this.bamIndex)
+					this.currRow.getDepth(super.bamIndex)
 					);
 			}
 		}
 	
 	
-	
+	/****************************************************************************************
+	 * 
+	 * ForEachRowApplyLoessAndGetMin
+	 *
+	 */
 	private class ForEachRowApplyLoessAndGetMin
 	extends ForEachRow
 		{
-		List<Double> vData;
+		private List<Double> vData;
 		double minDepth;
 		ForEachRowApplyLoessAndGetMin(int bamIndex,List<Double> vData)
 			{
-			super.bamIndex=bamIndex;
+			super(bamIndex);
 			this.vData=vData;
 			}
 		@Override
@@ -400,25 +458,29 @@ public class CNV20120927
 			{
 			this.minDepth=Double.MAX_VALUE;
 			super.scanChromosome(tid);
+			LOG.info("min depth:"+minDepth+" tid:"+tid+" bamIdx:"+this.bamIndex+" vsdata.size:"+this.vData.size());
 			}
 		@Override
 		public void apply() throws Exception
 			{
-			double newDepth=vData.get(rowIndex);
+			double newDepth=vData.get(this.rowIndex);
 			if(minDepth> newDepth) minDepth=newDepth;
 			currRow.setDepth(this.bamIndex, newDepth);
 			update();
 			}
 		}
 	
-	
-	
-	
+	/****************************************************************************************
+	 * 
+	 * ForEachRowSubstractMinAndGetMedian
+	 *
+	 */
 	private class ForEachRowSubstractMinAndGetMedian
-	extends ForEachRowAccumulateData
+	extends ForEachRow
 		{
 		private double minDepth;
 		double medianValue;
+		private List<Double> _vData;
 		ForEachRowSubstractMinAndGetMedian(int bamIndex,double minDepth)
 			{
 			super(bamIndex);
@@ -427,31 +489,39 @@ public class CNV20120927
 		@Override
 		public void scanChromosome(int tid) throws Exception
 			{
+			_vData=new ArrayList<Double>();
 			super.scanChromosome(tid);
-			Collections.sort(vData);
-			medianValue = super.vData.get(vData.size()/2);
-			vData.clear();
+			Collections.sort(_vData);
+			medianValue = calcMediane(this._vData);
+			_vData.clear();
+			LOG.info("medianValue depth:"+medianValue+" tid:"+tid+" bamIdx:"+this.bamIndex+" vdata.size:"+
+					_vData.size()+" rowIndex:"+this.rowIndex
+					);
 			}
 		@Override
 		public void apply() throws Exception
 			{
 			double depth=currRow.getDepth(this.bamIndex);
 			double newDepth=depth-this.minDepth;
-			super.vData.add(newDepth);
+			this._vData.add(newDepth);
 			currRow.setDepth(this.bamIndex, newDepth);
 			update();
 			}
 		}
 	
 	
-	
+	/****************************************************************************************
+	 * 
+	 * ForEachRowSubstractMinAndGetMedian
+	 *
+	 */
 	private class ForEachRowDivMedian
 	extends ForEachRow
 		{
-		double medianValue;
+		private double medianValue;
 		ForEachRowDivMedian(int bamIndex,double medianValue)
 			{
-			super.bamIndex=bamIndex;
+			super(bamIndex);
 			this.medianValue=medianValue;
 			}
 		
@@ -464,30 +534,50 @@ public class CNV20120927
 			update();
 			}
 		}
+
 	
+	/****************************************************************************************
+	 * 
+	 * ForEachRowHorizontalMedian
+	 *
+	 */
 	private class ForEachRowHorizontalMedian
-	extends ForEachRow
+		extends ForEachRow
 		{
 		double cutOff;
 		ForEachRowHorizontalMedian(double cutOff)
 			{
+			super(-1);
 			this.cutOff=cutOff;
 			}
 		
 		@Override
 		public void apply() throws Exception
 			{
-			double v[]=new double[CNV20120927.this.bams.size()-1];
-			for(int i=1;i<CNV20120927.this.bams.size();++i)
+			List<Double> v=new ArrayList<Double>(currRow.getSampleCount()-1);
+			for(int i=1;i<currRow.getSampleCount();++i)
 				{
-				v[i-1]=currRow.getDepth(i);
+				v.add(currRow.getDepth(i));
+				if(this.rowIndex==0)
+					{
+					System.err.println("###["+i+"]="+v.get(v.size()-1));
+					}
 				}
-			Arrays.sort(v);
-			double mediane=v[v.length/2];
+			Collections.sort(v);
+			double mediane=calcMediane(v);
+			if(this.rowIndex==0)
+				{
+				System.err.println("###mediane="+mediane);
+				}
 			if(mediane>this.cutOff)
 				{
-				for(int i=0;i< CNV20120927.this.bams.size();++i)
+				for(int i=0;i< currRow.getSampleCount();++i)
 					{
+					if(this.rowIndex==0)
+						{
+						System.err.println("###new["+i+"]="+currRow.getDepth(i)/mediane);
+						}
+					
 					currRow.setDepth(i, currRow.getDepth(i)/mediane);
 					}
 				update();
@@ -506,7 +596,7 @@ public class CNV20120927
 		int margin;
 		ForEachRowMed(int bamIndex,List<Double> vData,int margin)
 			{
-			super.bamIndex=bamIndex;
+			super(bamIndex);
 			this.vData=vData;
 			this.margin=margin;
 			}
@@ -522,13 +612,13 @@ public class CNV20120927
 				}
 			List<Double> runmed=new ArrayList<Double>(margin*2+1);
 			for(int i=Math.max(0,rowIndex-margin);
-					i<= rowIndex+margin && i< vData.size();
+					i<= rowIndex+margin && i< this.vData.size();
 					++i)
 				{
 				runmed.add(vData.get(i));
 				}
 			Collections.sort(runmed);
-			newDepth=Math.log(runmed.get(runmed.size()/2));
+			newDepth=log2(calcMediane(runmed));
 			if(Double.isNaN(newDepth)) newDepth=0;
 			
 			currRow.setDepth(this.bamIndex, newDepth);
@@ -538,6 +628,7 @@ public class CNV20120927
 	
 	private void run() throws Exception
 		{
+		File baseDir=new File("/commun/data/users/lindenb/_ignore.backup/");
 		open();
 		DatabaseEntry key=new DatabaseEntry();
 		DatabaseEntry data=new DatabaseEntry();
@@ -649,11 +740,13 @@ public class CNV20120927
 		            ForEachRow forEach=new ForEachRowCalcDepth(bx,depth0);
 		            forEach.scanChromosome(chrom.getSequenceIndex());
 		            forEach=null;
+		            
+		           
 					}
 			depth0=null;
 			}
 		
-		dump(new File("/commun/data/users/lindenb/_ignore.backup/jeter.tsv"));
+		dump(new File(baseDir,"jeter.tsv"));
 		
 		for(SAMSequenceRecord chrom: dict.getSequences())
 			{
@@ -665,12 +758,14 @@ public class CNV20120927
 				{
 				ForEachRowCalcLoess calcLoess=new ForEachRowCalcLoess(bx);
 				calcLoess.scanChromosome(tid);
-				List<Double> vData=calcLoess.vData;
+								
+				ForEachRowApplyLoessAndGetMin applyLoess=new ForEachRowApplyLoessAndGetMin(bx, calcLoess.vData);
 				calcLoess=null;
-				
-				ForEachRowApplyLoessAndGetMin applyLoess=new ForEachRowApplyLoessAndGetMin(bx, vData);
 				applyLoess.scanChromosome(tid);
 				
+				dump(new File(baseDir,"jeter.loess."+bx+".tsv"),bx);
+				
+				LOG.info("min depth:"+applyLoess.minDepth);
 				double minDepth=applyLoess.minDepth;
 				applyLoess=null;
 				
@@ -679,12 +774,24 @@ public class CNV20120927
 				double median=subMinMedian.medianValue;
 				subMinMedian=null;
 				
+				dump(new File(baseDir,"jeter.min."+bx+".tsv"),bx);
+				
 				ForEachRowDivMedian divMedian=new ForEachRowDivMedian(bx,median);
 				divMedian.scanChromosome(tid);
+				
+				dump(new File(baseDir,"jeter.divmedian."+bx+".tsv"),bx);
 				}
+			
 			ForEachRowHorizontalMedian forEachHorizontalMedian=new ForEachRowHorizontalMedian(0.2);
 			forEachHorizontalMedian.scanChromosome(tid);
 			forEachHorizontalMedian=null;
+			
+			for(int bx=0;
+			bx< this.bams.size();
+			++bx)
+				{
+				dump(new File(baseDir,"jeter.hmedian."+bx+".tsv"),bx);
+				}
 			
 			for(int bx=0;
 			bx< this.bams.size();
@@ -694,11 +801,14 @@ public class CNV20120927
 				forEachVData.scanChromosome(tid);
 				List<Double> vData=forEachVData.vData;
 				forEachVData=null;
-				ForEachRowMed forEachMed=new ForEachRowMed(bx, vData, 5);
+				ForEachRowMed forEachMed=new ForEachRowMed(bx, vData, 3);
 				forEachMed.scanChromosome(tid);
+				dump(new File(baseDir,"jeter.med."+bx+".tsv"),bx);
 				}
 			}
 		
+		PrintWriter html=new PrintWriter(new File("/commun/data/users/lindenb/_ignore.backup/jeter.html"));
+		html.print("<html><body>");
 		
 		Cursor c=this.region2depths.openCursor(txn, null);
 		OperationStatus status;
@@ -710,14 +820,18 @@ public class CNV20120927
 			Graphics2DGenomeGraphDrawer drawer=new Graphics2DGenomeGraphDrawer(this.reference.getSequenceDictionary(),this.targetInterval);
 			drawer.setMinY(-3.0);
 			drawer.setMaxY(3.0);
-			BufferedImage img=drawer.createImage();
+			BufferedImage img=drawer.createImage(BufferedImage.TYPE_INT_ARGB);
 			Graphics2D g=(Graphics2D)img.getGraphics();
 			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 			drawer.init(g);
 			
 			File imgFile=new File("/commun/data/users/lindenb/_ignore.backup/"+this.bams.get(bx).file.getName()+".jpg");
+			html.println("<div>");
+			html.println("<h1>"+imgFile.getName()+"</h1>");
+
 			key=new DatabaseEntry();
 			status=c.getFirst(key, data, null);
+			
 			while(status==OperationStatus.SUCCESS)
 				{
 				
@@ -733,19 +847,27 @@ public class CNV20120927
 				    
 				    double pix_y= drawer.convertValueToPixelY(y);
 				    double pix_x= drawer.convertPositionToPixelX(tid, (chromStart+chromEnd)/2);
-				    g.setColor(Color.BLACK);
+				    Composite oldComposite=g.getComposite();
+				    g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,0.3f));
+				    g.setColor(Color.RED);
 				    g.fillOval((int)pix_x-2,(int)pix_y-2,5,5);
+				    g.setComposite(oldComposite);
 					status=c.getNext(key, data, null);
 					}
 				}
+			
 			drawer.finish();
 			g.dispose();
 			ImageIO.write(img, "JPG", imgFile);
-			
+			html.println("<img src='"+imgFile.getName()+"'/>");
+			html.println("</div>");
 			}
 		c.close();
 		
-		//dumpGnuplot(new File("/commun/data/users/lindenb/_ignore.backup/jeter.zip"));
+		html.print("</body></html>");
+		html.flush();
+		html.close();
+		dump(new File(baseDir,"jeter.end.tsv"));
 		
 		}
 	

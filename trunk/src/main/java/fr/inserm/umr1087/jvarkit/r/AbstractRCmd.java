@@ -15,12 +15,23 @@ public abstract class AbstractRCmd
 	private PrintStream outputStream;
 	private BufferedReader inputStream;
 	protected ConsummeInputStreamThread errStream;
-	private Process proc=null;
+	protected Process proc=null;
+	private Integer exitValue;
 	public AbstractRCmd()
 		{
 		this.baseDir=new File(System.getProperty("user.dir", "."));
 		}
-
+	protected void checkExitStatus()
+		{
+		if(exitValue==null)
+			{
+			exitValue=proc.exitValue();
+			}
+		if(exitValue!=0)
+			{
+			throw new RuntimeException("R command failed: status:"+exitValue);
+			}
+		}
 	private void start() throws IOException
 		{
 		if(this.proc!=null) return;
