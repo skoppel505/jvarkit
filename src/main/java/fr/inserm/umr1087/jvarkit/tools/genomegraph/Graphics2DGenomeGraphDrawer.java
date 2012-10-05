@@ -131,9 +131,9 @@ public class Graphics2DGenomeGraphDrawer extends AbstractGenomeGraphDrawer
 		paintForeground();
 		}
 	
-	public BufferedImage createImage()
+	public BufferedImage createImage(int imageType)
 		{
-		BufferedImage img= new BufferedImage(this.getWidth(),this.getHeight(),BufferedImage.TYPE_INT_RGB);
+		BufferedImage img= new BufferedImage(this.getWidth(),this.getHeight(),imageType);
 		return img;
 		}
 	

@@ -68,6 +68,11 @@ public class CNVRow
 		return false;
 		}
 	
+	public int getSampleCount()
+		{
+		return this.depths.length;
+		}
+	
 	public double getMedianDepth()
 		{
 		double v[]=new double[this.depths.length];

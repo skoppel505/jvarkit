@@ -33,7 +33,7 @@ public class RLoess extends AbstractRCmd
 			}
 		++count;
 		}
-	public List<Double> smooth() throws IOException
+	public List<Double> smooth() throws IOException,InterruptedException
 		{
 		if(!init || count==0) throw new RuntimeException();
 		PrintStream out=this.getOutputStream();
@@ -50,6 +50,18 @@ public class RLoess extends AbstractRCmd
 			y.add( Double.parseDouble(stdin.readLine()) );
 			}
 		stdin.close();
+		super.proc.waitFor();
+		checkExitStatus();
 		return y;
+		}
+	public static void main(String[] args) throws Exception
+		{
+		for(int i=0;i< 10;++i)
+			{
+			RLoess rloess=new RLoess();
+			for(int j=-10;j<10;++j) rloess.add(j, j);
+			System.err.println(rloess.smooth());
+			}
+		
 		}
 	}
