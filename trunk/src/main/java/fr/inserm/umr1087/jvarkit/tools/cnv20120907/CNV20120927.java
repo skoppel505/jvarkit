@@ -11,9 +11,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Logger;
@@ -23,6 +25,10 @@ import java.util.zip.ZipOutputStream;
 import javax.imageio.ImageIO;
 
 
+import com.sleepycat.bind.tuple.DoubleBinding;
+import com.sleepycat.bind.tuple.TupleBinding;
+import com.sleepycat.bind.tuple.TupleInput;
+import com.sleepycat.bind.tuple.TupleOutput;
 import com.sleepycat.je.Cursor;
 import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
@@ -32,6 +38,11 @@ import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.OperationStatus;
 import com.sleepycat.je.Transaction;
 
+import fr.inserm.umr1087.jvarkit.bdb.algorithm.StoredListFactory;
+import fr.inserm.umr1087.jvarkit.collections.Algorithms;
+import fr.inserm.umr1087.jvarkit.collections.DefaultListFactory;
+import fr.inserm.umr1087.jvarkit.collections.Listfactory;
+import fr.inserm.umr1087.jvarkit.math.Lowess;
 import fr.inserm.umr1087.jvarkit.r.RLoess;
 import fr.inserm.umr1087.jvarkit.segments.TidStartEnd;
 import fr.inserm.umr1087.jvarkit.segments.bdb.TidStartEndBinding;
@@ -65,6 +76,7 @@ public class CNV20120927
 	private Environment environment=null;
 	private Database region2depths;
 	private Transaction txn=null;
+	private Listfactory<Double> listOfDoubleFactory=new DefaultListFactory<Double>();
 	
 	private class BamBuffer
 		{
@@ -77,6 +89,84 @@ public class CNV20120927
 			}
 		}
 	
+	private static class XY
+		{
+		double x;
+		double y;
+		int index;
+		}
+	
+	private static class XYBinding
+		extends TupleBinding<XY>
+		{
+		@Override
+		public XY entryToObject(TupleInput input)
+			{
+			XY xy=new XY();
+			xy.index=input.readInt();
+			xy.x=input.readDouble();
+			xy.y=input.readDouble();
+			return xy;
+			}
+		@Override
+		public void objectToEntry(XY xy, TupleOutput output) {
+			output.writeInt(xy.index);
+			output.writeDouble(xy.x);
+			output.writeDouble(xy.y);
+			}
+		}
+	
+	
+	private static abstract class AbstractExtractList
+		extends AbstractList<Double>
+		{
+		private List<XY> delegate;
+		AbstractExtractList(List<XY> delegate)
+			{
+			this.delegate=delegate;
+			}
+		
+		protected abstract double extract(XY xy);
+		protected abstract double set(XY xy,double v);
+		
+		@Override
+		public Double get(int index) {
+			return extract(delegate.get(index));
+			}
+		
+		@Override
+		public Double set(int index, Double v)
+			{
+			XY xy= delegate.get(index);
+			double v2=set(xy, v);
+			delegate.set(index, xy);
+			return v2;
+			}
+		
+		@Override
+		public int size() {
+			return delegate.size();
+			}	
+		}
+	
+	private static class XYListOfX extends AbstractExtractList
+		{
+		XYListOfX(List<XY> delegate) { super(delegate);}
+		@Override
+		protected  double extract(XY xy) { return xy.x;}
+		@Override
+		protected  double set(XY xy,double v) { double old=xy.x; xy.x=v; return old;}
+		}
+	
+	private static class XYListOfY extends AbstractExtractList
+		{
+		XYListOfY(List<XY> delegate) { super(delegate);}
+		@Override
+		protected  double extract(XY xy) { return xy.y;}
+		@Override
+		protected  double set(XY xy,double v) { double old=xy.y; xy.y=v; return old;}
+		}
+
 
 
 	private CNV20120927()
@@ -121,12 +211,24 @@ public class CNV20120927
 		cfg.setTransactional(true);
 		cfg.setBtreeComparator(TidStartEndSorter.class);
 		this.region2depths= this.environment.openDatabase(txn,dbName1,cfg);
+		
+		/*this.listOfDoubleFactory=new StoredListFactory<Double>(
+				this.environment,
+				this.txn,
+				new DoubleBinding()
+				);*/
+		this.listOfDoubleFactory=new DefaultListFactory<Double>();
 		}
 	
 	
 	
 	private void close()
 		{
+		if(listOfDoubleFactory!=null)
+			{
+			try{this.listOfDoubleFactory.close();} catch(Exception err) {}
+			this.listOfDoubleFactory=null;
+			}
 		if(this.region2depths!=null)
 			{
 			try{region2depths.close();} catch(Exception err) {}
@@ -359,10 +461,11 @@ public class CNV20120927
 	private class ForEachRowAccumulateData
 		extends ForEachRow
 		{
-		List<Double> vData=new ArrayList<Double>();
+		List<Double> vData;
 		ForEachRowAccumulateData(int bamIndex)
 			{
 			super(bamIndex);
+			vData=CNV20120927.this.listOfDoubleFactory.createList(10000);
 			}
 		@Override
 		public void scanChromosome(int tid) throws Exception
@@ -406,14 +509,30 @@ public class CNV20120927
 	
 	/****************************************************************************************
 	 * 
+	 * AbstractForEachRowLoess
+	 *
+	 */
+	private abstract class AbstractForEachRowLoess
+		extends ForEachRow
+		{
+		List<Double> vData=null;
+		AbstractForEachRowLoess(int bamIndex)
+			{
+			super(bamIndex);
+			}
+		
+		}
+	
+	
+	/****************************************************************************************
+	 * 
 	 * ForEachRowCalcLoess
 	 *
 	 */
 	private class ForEachRowCalcLoess
-		extends ForEachRow
+		extends AbstractForEachRowLoess
 		{
 		private RLoess rLoessProc;
-		List<Double> vData=null;
 		ForEachRowCalcLoess(int bamIndex)
 			{
 			super(bamIndex);
@@ -423,8 +542,9 @@ public class CNV20120927
 			{
 			LOG.info("scanning loess for bamidx="+this.bamIndex+" tid:"+tid);
 			this.rLoessProc=new RLoess();
+			this.rLoessProc.setListOfDoubleFactory(CNV20120927.this.listOfDoubleFactory);
 			super.scanChromosome(tid);
-			this.vData=rLoessProc.smooth();
+			super.vData=rLoessProc.smooth();
 			LOG.info("CalcLoess: vData.size="+vData.size()+" rowIndex:"+this.rowIndex);
 			}
 		@Override
@@ -434,6 +554,117 @@ public class CNV20120927
 					this.currRow.getGcPercent(),
 					this.currRow.getDepth(super.bamIndex)
 					);
+			}
+		}
+	
+	/****************************************************************************************
+	 * 
+	 * ForEachRowCalcLoess
+	 *
+	 */
+	private class ForEachRowCalcLowess
+		extends AbstractForEachRowLoess
+		{
+		private Lowess lowess;
+		private List<XY> points;
+		ForEachRowCalcLowess(int bamIndex)
+			{
+			super(bamIndex);
+			}
+		private void sortPoints(Comparator<XY> cmp)
+			{
+			LOG.info("sort "+points.size());
+			Algorithms<XY> algos=new Algorithms<CNV20120927.XY>(cmp);
+			algos.quickSort(this.points);
+			LOG.info("sorted");
+			}
+		@Override
+		public void scanChromosome(int tid) throws Exception
+			{
+			LOG.info("scanning loess for bamidx="+this.bamIndex+" tid:"+tid);
+			
+			Listfactory<XY> listOfPointsfactory=new DefaultListFactory<XY>();
+			/*
+			XYBinding binding=new XYBinding();
+			new StoredListFactory<CNV20120927.XY>(
+					CNV20120927.this.environment,
+					CNV20120927.this.txn,
+					binding
+					);*/
+			
+			this.lowess=new Lowess();
+			this.lowess.setListFactory(CNV20120927.this.listOfDoubleFactory);
+			
+			points=listOfPointsfactory.createList(10000);
+			
+			
+			super.scanChromosome(tid);
+			
+			
+			sortPoints(new Comparator<XY>()
+						{
+						@Override
+						public int compare(XY o1, XY o2)
+							{
+							if(o1.x==o2.x)
+								{
+								if(o1.y==o2.y) return 0;
+								return o1.y < o2.y?-1:1;
+								}
+							return o1.x < o2.x?-1:1;
+							}
+						});
+
+			List<Double> var_x= new XYListOfX(this.points);
+			List<Double> var_y= new XYListOfY(this.points);
+
+			for(int i=0;i< var_y.size();++i)
+				{
+				if(i<10) System.err.println(""+i+":"+var_y.get(i));
+				}
+			
+			super.vData=this.lowess.lowess(
+				var_x,
+				var_y,
+				var_x.size()
+				);
+			
+			for(int i=0;i< super.vData.size();++i)
+				{
+				XY xy=this.points.get(i);
+				xy.y=super.vData.get(i);
+				if(i<10) System.err.println(""+i+":"+xy.y);
+				this.points.set(i,xy);
+				}
+			
+			
+			sortPoints(new Comparator<XY>()
+					{
+					@Override
+					public int compare(XY o1, XY o2)
+						{
+						return o1.index -o2.index;
+						}
+					});
+			
+			for(int i=0;i< points.size();++i)
+				{
+				XY xy=this.points.get(i);
+			
+				super.vData.set(i,xy.y);
+				}
+			
+			listOfPointsfactory.disposeList(points);
+			LOG.info("CalcLoess: vData.size="+vData.size()+" rowIndex:"+this.rowIndex);
+			}
+		@Override
+		public void apply() throws Exception
+			{
+			XY xy=new XY();
+			xy.x=this.currRow.getGcPercent();
+			xy.y=this.currRow.getDepth(super.bamIndex);
+			xy.index=this.rowIndex;
+			this.points.add(xy);
 			}
 		}
 	
@@ -459,6 +690,7 @@ public class CNV20120927
 			this.minDepth=Double.MAX_VALUE;
 			super.scanChromosome(tid);
 			LOG.info("min depth:"+minDepth+" tid:"+tid+" bamIdx:"+this.bamIndex+" vsdata.size:"+this.vData.size());
+			CNV20120927.this.listOfDoubleFactory.disposeList(this.vData);
 			}
 		@Override
 		public void apply() throws Exception
@@ -489,11 +721,11 @@ public class CNV20120927
 		@Override
 		public void scanChromosome(int tid) throws Exception
 			{
-			_vData=new ArrayList<Double>();
+			_vData=CNV20120927.this.listOfDoubleFactory.createList(10000);
 			super.scanChromosome(tid);
 			Collections.sort(_vData);
 			medianValue = calcMediane(this._vData);
-			_vData.clear();
+			CNV20120927.this.listOfDoubleFactory.disposeList(_vData);
 			LOG.info("medianValue depth:"+medianValue+" tid:"+tid+" bamIdx:"+this.bamIndex+" vdata.size:"+
 					_vData.size()+" rowIndex:"+this.rowIndex
 					);
@@ -592,15 +824,19 @@ public class CNV20120927
 	private class ForEachRowMed
 	extends ForEachRow
 		{
-		List<Double> vData;
-		int margin;
+		private List<Double> vData;
+		private int margin;
 		ForEachRowMed(int bamIndex,List<Double> vData,int margin)
 			{
 			super(bamIndex);
 			this.vData=vData;
 			this.margin=margin;
 			}
-		
+		@Override
+		public void scanChromosome(int tid) throws Exception {
+			super.scanChromosome(tid);
+			CNV20120927.this.listOfDoubleFactory.disposeList(vData);
+			}
 		@Override
 		public void apply() throws Exception
 			{
@@ -756,14 +992,20 @@ public class CNV20120927
 					bx< this.bams.size();
 					++bx)
 				{
-				ForEachRowCalcLoess calcLoess=new ForEachRowCalcLoess(bx);
+				boolean uselowess=false;
+				AbstractForEachRowLoess calcLoess=null;
+				calcLoess=(uselowess?
+						new ForEachRowCalcLowess(bx):
+						new ForEachRowCalcLoess(bx));
 				calcLoess.scanChromosome(tid);
 								
 				ForEachRowApplyLoessAndGetMin applyLoess=new ForEachRowApplyLoessAndGetMin(bx, calcLoess.vData);
+				
 				calcLoess=null;
 				applyLoess.scanChromosome(tid);
 				
-				dump(new File(baseDir,"jeter.loess."+bx+".tsv"),bx);
+				
+				//dump(new File(baseDir,"jeter.loess."+bx+".tsv"),bx);
 				
 				LOG.info("min depth:"+applyLoess.minDepth);
 				double minDepth=applyLoess.minDepth;
@@ -773,16 +1015,19 @@ public class CNV20120927
 				subMinMedian.scanChromosome(tid);
 				double median=subMinMedian.medianValue;
 				subMinMedian=null;
-				
-				dump(new File(baseDir,"jeter.min."+bx+".tsv"),bx);
+				LOG.info("median:"+subMinMedian);
+				//dump(new File(baseDir,"jeter.min."+bx+".tsv"),bx);
 				
 				ForEachRowDivMedian divMedian=new ForEachRowDivMedian(bx,median);
 				divMedian.scanChromosome(tid);
 				
-				dump(new File(baseDir,"jeter.divmedian."+bx+".tsv"),bx);
+				//dump(new File(baseDir,"jeter.divmedian."+bx+".tsv"),bx);
 				}
 			
-			ForEachRowHorizontalMedian forEachHorizontalMedian=new ForEachRowHorizontalMedian(0.2);
+			ForEachRowHorizontalMedian forEachHorizontalMedian=
+				new ForEachRowHorizontalMedian(
+						0.2
+						);
 			forEachHorizontalMedian.scanChromosome(tid);
 			forEachHorizontalMedian=null;
 			
@@ -790,7 +1035,7 @@ public class CNV20120927
 			bx< this.bams.size();
 			++bx)
 				{
-				dump(new File(baseDir,"jeter.hmedian."+bx+".tsv"),bx);
+				//dump(new File(baseDir,"jeter.hmedian."+bx+".tsv"),bx);
 				}
 			
 			for(int bx=0;
@@ -803,7 +1048,7 @@ public class CNV20120927
 				forEachVData=null;
 				ForEachRowMed forEachMed=new ForEachRowMed(bx, vData, 3);
 				forEachMed.scanChromosome(tid);
-				dump(new File(baseDir,"jeter.med."+bx+".tsv"),bx);
+				//dump(new File(baseDir,"jeter.med."+bx+".tsv"),bx);
 				}
 			}
 		

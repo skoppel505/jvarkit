@@ -3,16 +3,31 @@ package fr.inserm.umr1087.jvarkit.r;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.util.ArrayList;
 import java.util.List;
+
+import fr.inserm.umr1087.jvarkit.collections.DefaultListFactory;
+import fr.inserm.umr1087.jvarkit.collections.Listfactory;
 
 public class RLoess extends AbstractRCmd
 	{
 	private boolean init=false;
 	private int count=0;
+	private Listfactory<Double> listOfDoubleFactory=new DefaultListFactory<Double>();
+	
 	public RLoess()
 		{
 		}
+	
+	public Listfactory<Double> getListOfDoubleFactory()
+		{
+		return listOfDoubleFactory;
+		}
+	
+	public void setListOfDoubleFactory(Listfactory<Double> listOfDoubleFactory)
+		{
+		this.listOfDoubleFactory = listOfDoubleFactory;
+		}
+	
 	public void add(double x,double y) throws IOException
 		{
 		PrintStream out=this.getOutputStream();
@@ -44,7 +59,7 @@ public class RLoess extends AbstractRCmd
 		out.println("write.table(residuals(T2),'',col.names= F,row.names=F,sep='\\t')");
 		out.flush();
 		out.close();
-		List<Double> y=new ArrayList<Double>(count);
+		List<Double> y=this.listOfDoubleFactory.createList(count);
 		for(int i=0;i< count;++i)
 			{
 			y.add( Double.parseDouble(stdin.readLine()) );
