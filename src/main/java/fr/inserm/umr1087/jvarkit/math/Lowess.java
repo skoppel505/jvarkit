@@ -1,13 +1,11 @@
 package fr.inserm.umr1087.jvarkit.math;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
 import java.util.AbstractList;
-import java.util.ArrayList;
+//import java.util.ArrayList;
 import java.util.List;
 
-import fr.inserm.umr1087.jvarkit.util.DefaultListFactory;
-import fr.inserm.umr1087.jvarkit.util.Listfactory;
+import fr.inserm.umr1087.jvarkit.collections.DefaultListFactory;
+import fr.inserm.umr1087.jvarkit.collections.Listfactory;
 
 /* http://svn.r-project.org/R/trunk/src/library/stats/src/lowess.c */
 
@@ -56,6 +54,11 @@ public class Lowess
 	
 	public Lowess()
 		{
+		}
+	
+	public void setListFactory(Listfactory<Double> listFactory)
+		{
+		this.listFactory = listFactory;
 		}
 	
 	private static double fsquare(double x)
@@ -400,16 +403,18 @@ public class Lowess
 			{
 			delta=.01*(x.get(n-1)-x.get(0));
 			}
-	    ArrayList<Double> rw=new ArrayList<Double>(n);
-	    ArrayList<Double> ys=new ArrayList<Double>(n);
-	    ArrayList<Double> res=new ArrayList<Double>(n);
+	    List<Double> rw=this.listFactory.createList(n);
+	    List<Double> ys=this.listFactory.createList(n);
+	    List<Double> res=this.listFactory.createList(n);
 	    for(int i=0;i< n;++i) {rw.add(0.0);ys.add(0.);res.add(0.0);}
 	    
 	    clowess(x, y, n, this.smoother_span, this.nsteps, delta, ys, rw, res);
 
-
+	    this.listFactory.disposeList(rw);
+	    this.listFactory.disposeList(res);
 	    return ys;
 	    }
+	/*
 	public static void main(String[] args)
 		throws Exception
 		{
@@ -431,4 +436,5 @@ public class Lowess
 			System.out.println(""+x.get(i)+"\t"+y.get(i)+"\t"+y2.get(i));
 			}
 		}
+	*/
 }
