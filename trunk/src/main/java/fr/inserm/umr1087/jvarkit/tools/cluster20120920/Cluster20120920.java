@@ -5,6 +5,8 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -13,101 +15,261 @@ import java.util.regex.Pattern;
 import net.sf.picard.util.Interval;
 import net.sf.samtools.SAMFileReader;
 import net.sf.samtools.SAMRecord;
+import net.sf.samtools.SAMRecordCoordinateComparator;
 import net.sf.samtools.SAMRecordIterator;
 
 
 
-
+/**
+ * Cluster20120920
+ * @author lindenb
+ *
+ */
 public class Cluster20120920
 	{
-	@SuppressWarnings("unused")
 	private static final Logger LOG=Logger.getLogger("fr.inserm.umr1087.jvarkit");
 
 	private int margin=10;
 	private int minQual=15;
 	private List<Interval> intervalList=new ArrayList<Interval>();
+	private List<SamRecordAndFile> buffer=new LinkedList<Cluster20120920.SamRecordAndFile>();
+	private List<SamRecordSource> samSources=new ArrayList<SamRecordSource>();
+	private SAMRecordCoordinateComparator COMPARATOR=new SAMRecordCoordinateComparator();
+	
+	private class SamRecordSource
+		{
+		File bamFile;
+		SAMRecord current=null;
+		SAMFileReader samReader=null;
+		SAMRecordIterator iter=null;
+		
+		SamRecordSource(File bamFile)
+			{
+			this.bamFile=bamFile;
+			this.samReader=new SAMFileReader(bamFile);
+			this.samReader.setValidationStringency(SAMFileReader.ValidationStringency.LENIENT);
+			this.iter=null;
+			}
+		
+		public SamRecordAndFile peek()
+			{
+			while(current==null && iter!=null )
+				{
+				if(iter.hasNext())
+					{
+					SAMRecord sm=iter.next();
+					if(sm.getReadUnmappedFlag()) continue;
+					if(sm.getMateUnmappedFlag()) continue;
+					if(sm.getNotPrimaryAlignmentFlag()) continue;
+					if(sm.getReadFailsVendorQualityCheckFlag()) continue;
+					if(!sm.getProperPairFlag()) continue;
+					if(sm.getMappingQuality()< Cluster20120920.this.minQual) continue;
+					current=sm;
+					break;
+					}
+				else
+					{
+					iter.close();
+					iter=null;
+					}
+				
+				}
+			if(current==null) return null;
+			return new SamRecordAndFile(current,this.bamFile);
+			}
+		
+		public SamRecordAndFile consumme()
+			{
+			if(current==null) throw new IllegalStateException();
+			SAMRecord  rec=current;
+			current=null;
+			return new SamRecordAndFile(rec,this.bamFile);
+			}
+		}
+
+	
+	private static class SamRecordAndFile
+		{
+		SAMRecord record;
+		File bamFile;
+		SamRecordAndFile(SAMRecord record,File bamFile)
+			{
+			if(record==null) throw new NullPointerException();
+			this.record=record;
+			this.bamFile=bamFile;
+			}
+		@Override
+		public String toString() {
+			return record.getReferenceIndex()+":"+record.getAlignmentStart();
+			}
+		}
+	
+	
+	private SamRecordAndFile next()
+		{
+		boolean flags[]=new boolean[this.samSources.size()];
+		for(;;)
+			{
+			if(!buffer.isEmpty())
+				{
+				return buffer.remove(0);
+				}
+			Arrays.fill(flags, false);
+			for(int i=0;i< this.samSources.size();++i)
+				{
+				SamRecordAndFile rec= this.samSources.get(i).peek();
+				if(rec==null) continue;
+				if(buffer.isEmpty())
+					{
+					buffer.add(rec);
+					flags[i]=true;
+					}
+				/*  If the two records
+				 * are equal enough that their ordering in a
+				 * sorted SAM file would be arbitrary,
+				 * this method returns 0.
+				 */
+				else if(Cluster20120920.this.COMPARATOR.fileOrderCompare(
+						buffer.get(0).record,
+						rec.record) >0)
+					{
+					buffer.clear();
+					Arrays.fill(flags, false);
+					buffer.add(rec);
+					flags[i]=true;
+					}
+				else if(Cluster20120920.this.COMPARATOR.fileOrderCompare(
+						buffer.get(0).record,
+						rec.record) <0)
+					{
+					//ignore record
+					}
+				else
+					{
+					buffer.add(rec);
+					flags[i]=true;
+					}
+				}
+			if(buffer.isEmpty()) return null;
+			for(int i=0;i< flags.length;++i)
+				{
+				if(!flags[i]) continue;
+				this.samSources.get(i).consumme();
+				}
+			}
+		}
+	
+	
 	private Cluster20120920()
 		{
 		
 		}
+	
+	
+	
+	boolean first_dump=true;
 	private void dump(
-			File bamFile,
-			List<SAMRecord> cluster
+			List<SamRecordAndFile> cluster
 			)
 		{
 		if(cluster.size()> 1)
 			{
-			SAMRecord front=cluster.get(0);
+			SAMRecord front=cluster.get(0).record;
 			int start1=Math.min(front.getAlignmentStart(),front.getMateAlignmentStart());
 			int end1=start1+Math.abs(front.getInferredInsertSize());
-			System.out.println(
+			System.out.print(
 				front.getReferenceName()+"\t"+
 				start1+"\t"+
 				end1+"\t"+
-				cluster.size()+"\t"+
-				bamFile
+				cluster.size()
 				);
+			for(SamRecordSource srcFile:this.samSources)
+				{
+				int c=0;
+				for(SamRecordAndFile srf:cluster)
+					{
+					if(srf.bamFile==srcFile.bamFile) 
+						{
+						++c;
+						}
+					}
+				System.out.print("\t"+c);
+				}	
+			System.out.println();
+			if(first_dump)
+				{
+				int c=0;
+				for(SamRecordAndFile srf:cluster)
+					{
+					System.err.println(""+(++c)+" "+srf.bamFile+" "+
+							front.getReferenceName()+"\t"+
+							start1+"\t"+
+							end1+"\t"+
+							srf.record.getReadName()+"\t"+
+							srf.record.getReferenceName()+"\t"+
+							Math.min(srf.record.getAlignmentStart(),srf.record.getMateAlignmentStart())							
+							);
+					}
+				first_dump=false;
+				}
 			}
 		
 		cluster.clear();
 		}
-	private void scan(File bamFile,SAMFileReader samReader,SAMRecordIterator iter)
+	
+	/** scan */
+	private void scanAll()
 		{
-		List<SAMRecord> cluster=new ArrayList<SAMRecord>();
-		while(iter.hasNext())
+		List<SamRecordAndFile> cluster=new ArrayList<SamRecordAndFile>();
+		SamRecordAndFile rec=null;
+		while((rec=next())!=null)
 			{
-			SAMRecord rec=iter.next();
-			if(rec.getReadUnmappedFlag()) continue;
-			if(rec.getMateUnmappedFlag()) continue;
-			if(rec.getNotPrimaryAlignmentFlag()) continue;
-			if(rec.getReadFailsVendorQualityCheckFlag()) continue;
-			if(rec.getProperPairFlag()) continue;
-			if(rec.getMappingQuality()< this.minQual) continue;
-			if(!rec.getFirstOfPairFlag()) continue;
+			if(!rec.record.getFirstOfPairFlag()) continue;
 			LOG.info("ok");
 			if(!cluster.isEmpty())
 				{
-				SAMRecord front=cluster.get(0);
+				SAMRecord front=cluster.get(0).record;
 				if(front.getAlignmentStart()>front.getAlignmentEnd()) throw new IllegalStateException();
 				int start1=Math.min(front.getAlignmentStart(),front.getMateAlignmentStart())-this.margin;
 				int end1=start1+Math.abs(front.getInferredInsertSize())+2*this.margin;
 				
-				int start2=Math.min(rec.getAlignmentStart(),rec.getMateAlignmentStart())-this.margin;
-				int end2=start2+Math.abs(rec.getInferredInsertSize())+2*this.margin;
-				if(!front.getReferenceName().equals(rec.getReferenceName()) || end2<start1 || start2>end1)
+				int start2=Math.min(rec.record.getAlignmentStart(),rec.record.getMateAlignmentStart())-this.margin;
+				int end2=start2+Math.abs(rec.record.getInferredInsertSize())+2*this.margin;
+				if(!front.getReferenceName().equals(rec.record.getReferenceName()) || end2<start1 || start2>end1)
 					{
-					dump(bamFile,cluster);
+					dump(cluster);
 					}
 				}
 			cluster.add(rec);
 			}
-		dump(bamFile,cluster);
+		dump(cluster);
 		}
 	
-	private void scanBam(File bamFile)
+	private void scan()
 		{
-		SAMFileReader samReader=new SAMFileReader(bamFile);
-		samReader.setValidationStringency(SAMFileReader.ValidationStringency.LENIENT);
 		if(this.intervalList.isEmpty())
 			{
-			SAMRecordIterator iter=samReader.iterator();
-			scan(bamFile,samReader,iter);
-			iter.close();
+			for(SamRecordSource src:this.samSources)
+				{
+				src.iter=src.samReader.iterator();
+				}
+			scanAll();
 			}
 		else
 			{
 			for(Interval interval:this.intervalList)
 				{
-				SAMRecordIterator iter=samReader.queryOverlapping(
-						interval.getSequence(),
-						interval.getStart()+1,
-						interval.getEnd()
-						);
-				scan(bamFile,samReader,iter);
-				iter.close();
+				for(SamRecordSource src:this.samSources)
+					{
+					src.iter=src.samReader.queryOverlapping(
+							interval.getSequence(),
+							interval.getStart()+1,
+							interval.getEnd()
+							);
+					}
+				scanAll();
 				}
 			}
-		samReader.close();
 		}
 	
 	private void usage()
@@ -185,11 +347,21 @@ public class Cluster20120920
 	
 		while(optind!=args.length)
 			{
-			File file=new File(args[optind++]);
-			scanBam(file);
-			
+			this.samSources.add(new SamRecordSource(new File(args[optind++])));
 			}
-		//this.test();
+		System.out.print(
+				"#chrom\t"+
+				"start\t"+
+				"end\t"+
+				"total"
+				);
+			for(SamRecordSource srcFile:this.samSources)
+				{
+				System.out.print("\t"+srcFile.bamFile);
+				}	
+			System.out.println();
+
+		this.scan();
 		}
 	public static void main(String[] args)
 		{
