@@ -42,7 +42,7 @@
 
 
 <xsl:template match="p:metrics">
-<h2><xsl:value-of select="local-name(.)"/></h2>
+<h2><xsl:value-of select="p:thead/@class"/></h2>
 <xsl:choose>
 <xsl:when test="count(p:tbody/p:tr)=1">
 <table border="1">
