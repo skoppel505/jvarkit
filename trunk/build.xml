@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project name="MyProject" default="all" basedir=".">
+<project name="jvarkit" default="mature.projects" basedir=".">
 <property file="build.properties"/>
 
 <path id="bigwig.lib">
@@ -26,12 +26,42 @@
      <path refid="picard.lib"/>
      <path refid="bigwig.lib"/>
      <path refid="bdb.lib"/>
-	 <path refid="math.lib"/>
+     <path refid="math.lib"/>
 </path>
 
+<target name="mature.projects" depends="picard2xml"/>
 
-<target name="all" depends="dist/cluster20120920,dist/invert20120917,dist/cnv20120907.jar">
+<target name="all" depends="mature.projects,dist/cluster20120920,dist/invert20120917,dist/cnv20120907.jar">
 </target>
+
+
+ <target name="picard2xml" >
+   <mkdir dir="tmp"/>
+   <mkdir dir="dist"/>
+   
+   
+   
+   <javac destdir="tmp" includeAntRuntime="false" debug="true">
+   		<src path="src/main/java"/>
+   		<classpath refid="picard.lib"/>
+   		<include name="**/PicardMetricsToXML.java"/>
+   </javac>
+   
+   <pathconvert property="manifest_cp" pathsep=" " >
+		 <path refid="picard.lib"/>
+   </pathconvert>  
+   
+   <jar jarfile="dist/cnvpicardmetrics2xml.jar">
+	     <fileset dir="tmp" />
+	     <manifest>
+	       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.picard.metrics2xml.PicardMetricsToXML"/>
+	        <attribute name="Class-Path" value="${manifest_cp}"/>
+	     </manifest>
+ 	</jar>
+   
+    <delete dir="tmp"/>
+ </target>
+
 
 <target name="dist/cluster20120920" >
 	   <mkdir dir="tmp"/>
