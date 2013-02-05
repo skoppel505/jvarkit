@@ -39,7 +39,11 @@
    <mkdir dir="tmp"/>
    <mkdir dir="dist"/>
    
-   
+   <copy todir="dist">
+   	<fileset dir="src/main/resources/xsl">
+   	 	<include name="*.xsl"/>
+   	</fileset>
+   </copy>
    
    <javac destdir="tmp" includeAntRuntime="false" debug="true">
    		<src path="src/main/java"/>
@@ -51,7 +55,7 @@
 		 <path refid="picard.lib"/>
    </pathconvert>  
    
-   <jar jarfile="dist/cnvpicardmetrics2xml.jar">
+   <jar jarfile="dist/picardmetrics2xml.jar">
 	     <fileset dir="tmp" />
 	     <manifest>
 	       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.picard.metrics2xml.PicardMetricsToXML"/>
