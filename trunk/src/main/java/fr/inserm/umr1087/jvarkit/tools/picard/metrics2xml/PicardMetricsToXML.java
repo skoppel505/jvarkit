@@ -270,7 +270,6 @@ public class PicardMetricsToXML
 	public static void main(String[] args)
 		throws IOException,XMLStreamException
 		{
-		args=new String[]{"/home/lindenb/src/picard-code/jeter"};
 		new PicardMetricsToXML().run(args);
 		}
 	}
