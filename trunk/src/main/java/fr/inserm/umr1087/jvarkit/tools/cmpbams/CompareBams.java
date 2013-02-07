@@ -207,6 +207,7 @@ public class CompareBams {
 			{
 			long nReads=0L;
 			File samFile=new File(args[optind+currentSamFileIndex]);
+			LOG.info("Opening "+samFile);
 			SAMFileReader samFileReader=new SAMFileReader(samFile);
 			samFileReader.setValidationStringency(ValidationStringency.SILENT);
 			SAMSequenceDictionary dict=samFileReader.getFileHeader().getSequenceDictionary();
@@ -248,9 +249,11 @@ public class CompareBams {
 					}
 				}
 			samFileReader.close();
+			LOG.info("Close "+samFile);
 			}
+		LOG.info("Writing results....");
 		//compute the differences for each read
-		System.out.println("#READ-Name\t");
+		System.out.print("#READ-Name\t");
 		for(int x=0;x<this.countBams;++x)
 			{
 			for(int y=x+1;y<this.countBams;++y)
@@ -306,6 +309,7 @@ public class CompareBams {
 		this.database.close();
 		this.environment.removeDatabase(txn, DATABASENAME);
 		this.txn.commit();
+		this.environment.cleanLog();
 		this.environment.close();
 		}
 		
