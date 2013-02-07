@@ -103,9 +103,10 @@ Feb 07, 2013 2:09:57 PM fr.inserm.umr1087.jvarkit.tools.cmpbams.CompareBams run
 #INFO: in GAP8.bam count:1
 Feb 07, 2013 2:10:30 PM fr.inserm.umr1087.jvarkit.tools.cmpbams.CompareBams run
 INFO: in GAP9.bam count:1
+(....)
 }}}
 
-The file diff.gz contains is a tab delimited file containing
+The file diff.gz  is a tab delimited file containing
   * the name of the read
   * the comparaison of each bam vs the others
   * the positions of the reads in each bam
