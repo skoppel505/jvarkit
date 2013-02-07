@@ -29,6 +29,12 @@
      <path refid="math.lib"/>
 </path>
 
+<path id="picard.and.bdb.jars">
+     <path refid="bdb.lib"/>
+     <path refid="picard.lib"/>
+</path>
+
+
 <target name="mature.projects" depends="picard2xml,cmpbams"/>
 
 <target name="all" depends="mature.projects,dist/cluster20120920,dist/invert20120917,dist/cnv20120907.jar">
@@ -68,28 +74,22 @@
 
 
 <target name="cmpbams" >
-		<path id="cmpbams.jars">
-		     <path refid="picard.lib"/>
-		     <path refid="bdb.lib"/>
-		</path>
-	
 	   <mkdir dir="tmp"/>
 	   <mkdir dir="dist"/>
 	   	   
 	   <javac destdir="tmp" includeAntRuntime="false" debug="true">
 	   		<src path="src/main/java"/>
-	   		<classpath refid="cmpbams.jars"/>
+	   		<classpath refid="picard.and.bdb.jars"/>
 	   		<include name="**/CompareBams.java"/>
 	   </javac>
 	   
-	   <pathconvert property="manifest_cp" pathsep=" " >
-			 <path refid="cmpbams.jars"/>
-	   </pathconvert>  
-	   
+	   <pathconvert property="manifest_cp" pathsep=" " refid="picard.and.bdb.jars"/>
+
+	  <echo>path= "${manifest_cp}</echo>
 	   <jar jarfile="dist/comparebams.jar">
 		     <fileset dir="tmp" />
 		     <manifest>
-		       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.cmpbams.CompareBams.java"/>
+		       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.cmpbams.CompareBams"/>
 		        <attribute name="Class-Path" value="${manifest_cp}"/>
 		     </manifest>
 	 	</jar>
