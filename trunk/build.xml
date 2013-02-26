@@ -35,7 +35,7 @@
 </path>
 
 
-<target name="mature.projects" depends="picard2xml,cmpbams"/>
+<target name="mature.projects" depends="picard2xml,cmpbams,vcfbigwig"/>
 
 <target name="all" depends="mature.projects,dist/cluster20120920,dist/invert20120917,dist/cnv20120907.jar">
 </target>
@@ -96,6 +96,30 @@
 	   
     <delete dir="tmp"/>
  </target>
+
+	
+<target name="vcfbigwig" >
+	   <mkdir dir="tmp"/>
+	   <mkdir dir="dist"/>
+	   	   
+	   <javac destdir="tmp" includeAntRuntime="false" debug="true">
+	   		<src path="src/main/java"/>
+	   		<classpath refid="bigwig.lib"/>
+	   		<include name="**/VCFBigWig.java"/>
+	   </javac>
+	   
+	   <pathconvert property="manifest_cp" pathsep=" " refid="bigwig.lib"/>
+
+	   <jar jarfile="dist/vcfbigwig.jar">
+		     <fileset dir="tmp" />
+		     <manifest>
+		       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.vcfbigwig.VCFBigWig"/>
+		        <attribute name="Class-Path" value="${manifest_cp}"/>
+		     </manifest>
+	 	</jar>
+	   
+    <delete dir="tmp"/>
+ </target>	
 	
 	
 	
