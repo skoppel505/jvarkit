@@ -35,7 +35,7 @@
 </path>
 
 
-<target name="mature.projects" depends="picard2xml,cmpbams,vcfbigwig"/>
+<target name="mature.projects" depends="picard2xml,cmpbams,vcfbigwig,vcftabix"/>
 
 <target name="all" depends="mature.projects,dist/cluster20120920,dist/invert20120917,dist/cnv20120907.jar">
 </target>
@@ -120,7 +120,32 @@
 	   
     <delete dir="tmp"/>
  </target>	
+
 	
+<target name="vcftabix" >
+	   <mkdir dir="tmp"/>
+	   <mkdir dir="dist"/>
+	   	
+	   <javac destdir="tmp" includeAntRuntime="false" debug="true">
+	   		<src path="src/main/java"/>
+	   		<classpath refid="picard.lib"/>
+	   		<include name="**/VCFTabix.java"/>
+	   </javac>
+	   
+	   <pathconvert property="manifest_cp" pathsep=" " refid="picard.lib"/>
+
+	   <jar jarfile="dist/vcftabix.jar">
+		     <fileset dir="tmp" />
+		     <manifest>
+		        <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.vcftabix.VCFTabix"/>
+		        <attribute name="Class-Path" value="${manifest_cp}"/>
+		     </manifest>
+	 	</jar>
+	   
+    <delete dir="tmp"/>
+ </target>	
+		
+
 	
 	
 <target name="dist/cluster20120920" >
