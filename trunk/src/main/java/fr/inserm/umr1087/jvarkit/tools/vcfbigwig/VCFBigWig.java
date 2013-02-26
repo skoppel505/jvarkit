@@ -25,7 +25,7 @@ public class VCFBigWig
 		{
 		Pattern tab=Pattern.compile("[\t]");
 		List<Float> values=new ArrayList<Float>();
-		String tokens[]=new String[2];
+
 		String line;
 		while((line=in.readLine())!=null)
 			{
@@ -39,12 +39,13 @@ public class VCFBigWig
 					out.println("##INFO=<ID="+this.infoId+",Number=1,Type=Float,Description=\"Annotations from "+this.bigWigFile+"\">");
 
 					out.println(line);
-					break;
+					continue;
 					}
 				out.println(line);
 				continue;
 				}
-			tokens=tab.split(line,9);
+			
+			String tokens[]=tab.split(line,9);
 			if(tokens.length<8)
 				{
 				System.err.println("Error not enought columns in "+line);
@@ -54,12 +55,14 @@ public class VCFBigWig
 			Integer pos1=Integer.parseInt(tokens[1]);
 			
 			values.clear();
-			BigWigIterator iter=this.bbFileReader.getBigWigIterator(chrom, pos1, chrom, pos1, this.contained);
+			
+			BigWigIterator iter=this.bbFileReader.getBigWigIterator(chrom, pos1-1, chrom, pos1, this.contained);
 			while(iter.hasNext())
 				{
 				WigItem item=iter.next();
 				float v=item.getWigValue();
 				values.add(v);
+				
 				}
 			
 			if(values.isEmpty())
