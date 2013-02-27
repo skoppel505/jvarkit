@@ -46,7 +46,7 @@ java -jar dist/vcftabixml.jar -f src.vcf.gz -x style.xsl (file.vcf|stdin)
 {{{
  -f (BED indexed with tabix. The 4th column is a XML string.) REQUIRED.
  -H (String like '##INFO=...') append extra-info header
- -x xslt-stylesheet. REQUIRED. Should produce a valid set of INFO field.
+ -x xslt-stylesheet. REQUIRED. Should produce a valid set of INFO fields.
 }}}
 
 =Example=
