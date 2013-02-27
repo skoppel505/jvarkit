@@ -25,6 +25,8 @@ public class DumpExomeVariantServerData
 	{
 	private static final Logger LOG=Logger.getLogger("evs");
 	private int step_size=15000;
+	private long limit_records=-1L;
+	private long count_records=0L;
 	public static final String EVS_NS="http://webservice.evs.gs.washington.edu/";
 	private DocumentBuilder documentBuilder;
 	private Transformer transformer;
@@ -105,6 +107,7 @@ public class DumpExomeVariantServerData
 	private void fetch(String chrom,int length)
 		throws Exception
 		{
+		if(limit_records>0 && count_records>=limit_records) return;
 		final int step=this.step_size;
 		int start=1;
 		do
@@ -129,6 +132,8 @@ public class DumpExomeVariantServerData
 						chrPosition=n2.getTextContent();
 						}
 					}
+				count_records++;
+				if(limit_records>0 && count_records>=limit_records) break;
 				
 				StringWriter sw=new StringWriter();
 				transformer.transform(
@@ -149,6 +154,7 @@ public class DumpExomeVariantServerData
 			
 			
 			start+=step;
+			if(limit_records>0 && count_records>=limit_records) break;
 			} while(start<=length);
 		}
 	
@@ -163,6 +169,7 @@ public class DumpExomeVariantServerData
 				System.out.println("Usage: java -jar dumpevs.jar > evs.bed " );
 				System.out.println("Options:");
 				System.out.println(" -S (int) download using a step of  'S' bases.  OPTIONAL.");
+				System.out.println(" -L  (int) limit to 'N' records for testing.  OPTIONAL.");
 				System.out.println(" --proxyHost <string> optional");
 				System.out.println(" --proxyPort <string> optional");
 				return ;
@@ -170,6 +177,10 @@ public class DumpExomeVariantServerData
 			else if(args[optind].equals("-S") && optind+1< args.length)
 				{
 				this.step_size=Integer.parseInt(args[++optind]);
+				}
+			else if(args[optind].equals("L") && optind+1< args.length)
+				{
+				this.limit_records=Long.parseLong(args[++optind]);
 				}
 			else if(args[optind].equals("--proxyHost") && optind+1< args.length)
 				{
