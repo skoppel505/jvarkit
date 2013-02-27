@@ -28,6 +28,7 @@ public class VCFTabix
 	private boolean refMatters=true;
 	private boolean altMatters=true;
 	private boolean replaceID=true;
+	private String altConflictTag=null;
 	
 	private boolean isEmpty(String s)
 		{
@@ -96,6 +97,10 @@ public class VCFTabix
 							} 
 						r2.close();
 						}
+					if(altConflictTag!=null)
+						{
+						out.println("##INFO=<ID="+this.altConflictTag+",Number=1,Type=String,Description=\"Conflict ALT alleles with '"+ tabixFile+"' \">");
+						}
 					out.println(line);
 					continue;
 					}
@@ -130,9 +135,23 @@ public class VCFTabix
 				if(!tokens[0].equals(tokens2[0])) continue;
 				if(!tokens[1].equals(tokens2[1])) continue;
 				if(this.refMatters && !tokens[3].equalsIgnoreCase(tokens2[3])) continue;
-				if(this.altMatters && !tokens[4].equalsIgnoreCase(tokens2[4])) continue;
 				
 				
+				Map<String,String> infos2=parseInfo(tokens2[7]);
+				
+				if(!tokens[4].equalsIgnoreCase(tokens2[4]))
+					{
+					if(this.altMatters) continue;
+					}
+				
+				
+				
+				
+				
+				if(altConflictTag!=null && !tokens[4].equalsIgnoreCase(tokens2[4]))
+					{
+					infos1.put(this.altConflictTag,this.altConflictTag+"="+tokens2[4]);
+					}
 				
 				if(isEmpty(tokens[2]) && !isEmpty(tokens2[2]))
 					{
@@ -147,7 +166,7 @@ public class VCFTabix
 						}
 					}
 				
-				Map<String,String> infos2=parseInfo(tokens2[7]);
+				
 				for(String id:this.infoIds)
 					{
 					if(!infos2.containsKey(id)) continue;
@@ -183,7 +202,7 @@ public class VCFTabix
 			{
 			if(args[optind].equals("-h"))
 				{
-				System.out.println("VCF Tabix. Author: Pierre Lindenbaum PhD.");
+				System.out.println("VCF Tabix. Author: Pierre Lindenbaum PhD. 2013.");
 				System.out.println("Usage: java -jar vcftabix.jar -f src.vcf.gz (file.vcf|stdin) " );
 				System.out.println(" -f (vcf indexed with tabix) REQUIRED.");
 				System.out.println(" -T (tag String) VCF-INFO-ID optional can be used several times.");
@@ -191,7 +210,12 @@ public class VCFTabix
 				System.out.println(" -A doesn't use ALT allele");
 				System.out.println(" -I don't replace ID if it exists.");
 				System.out.println(" -F don't replace INFO field if it exists.");
+				System.out.println(" -C (TAG) use this tag in case of conflict with the ALT allele.");
 				return 0;
+				}
+			else if(args[optind].equals("-C")&& optind+1< args.length)
+				{
+				this.altConflictTag=args[++optind];
 				}
 			else if(args[optind].equals("-F"))
 				{
