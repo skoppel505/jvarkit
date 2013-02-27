@@ -23,12 +23,49 @@ public class VCFTabix
 	private String tabixFile;
 	private TabixReader tabixReader =null;
 	private Set<String> infoIds=new LinkedHashSet<String>();
+	private Pattern semicolon=Pattern.compile(";");
+	private boolean replaceInfoField=true;
+	private boolean refMatters=true;
+	private boolean altMatters=true;
+	private boolean replaceID=true;
+	
+	private boolean isEmpty(String s)
+		{
+		return s==null || s.equals(".") || s.isEmpty();
+		}
+	
+	private Map<String,String> parseInfo(String infoField)
+		{
+		Map<String,String> m=new LinkedHashMap<String,String>();
+		if(isEmpty(infoField)) return m;
+		for(String info:semicolon.split(infoField))
+			{
+			if(info.isEmpty()) continue;
+			int eq=info.indexOf('=');
+			String value;
+			String key;
+			if(eq!=-1)
+				{
+				key=info.substring(0,eq);
+				value=info.substring(eq+1);
+				}
+			else
+				{
+				key=info;
+				value=info;
+				}
+			m.put(key,info);
+			}
+
+		return m;
+		}
 	private void run(BufferedReader in) throws IOException
 		{
 		Pattern tab=Pattern.compile("[\t]");
 		String line;
 		while((line=in.readLine())!=null)
 			{
+
 			if(line.isEmpty()) continue;
 			
 			if(line.startsWith("#"))
@@ -36,24 +73,29 @@ public class VCFTabix
 				if(line.startsWith("#CHROM"))
 					{
 					out.println("##Annotated with "+getClass()+":"+tabixFile);
-					BlockCompressedInputStream src=new BlockCompressedInputStream(new File(tabixFile));
-					BufferedReader r2=new BufferedReader(new InputStreamReader(src));
-					String line2;
-					while((line2=r2.readLine())!=null)
+					if(!this.infoIds.isEmpty())
 						{
-						if(line2.startsWith("#CHROM")) break;
-						if(!line2.startsWith("##INFO=")) continue;
-						int i=line2.indexOf("ID=");
-						if(i==-1) continue;
-						int j=line2.indexOf(i+1,',');
-						if(j==-1) j=line2.indexOf(i+1,'>');
-						if(j==-1) continue;
-						if(this.infoIds.contains(line2.substring(i+3,j)))
+						BlockCompressedInputStream src=new BlockCompressedInputStream(new File(tabixFile));
+						BufferedReader r2=new BufferedReader(new InputStreamReader(src));
+						String line2;
+						while((line2=r2.readLine())!=null)
 							{
-							out.println(line2);
-							}
-						} 
-					r2.close();
+							if(line2.startsWith("#CHROM")) break;
+							if(!line2.startsWith("##")) break;
+							if(!line2.startsWith("##INFO=")) continue;
+							
+							int i=line2.indexOf("ID=");
+							if(i==-1) continue;
+							int j=line2.indexOf(',',i+1);
+							if(j==-1) j=line2.indexOf('>',i+1);
+							if(j==-1) continue;
+							if(this.infoIds.contains(line2.substring(i+3,j)))
+								{
+								this.out.println(line2);
+								}
+							} 
+						r2.close();
+						}
 					out.println(line);
 					continue;
 					}
@@ -69,70 +111,66 @@ public class VCFTabix
 				}
 			String chrom=tokens[0];
 			Integer pos1=Integer.parseInt(tokens[1]);
-			
+			Map<String,String> infos1=parseInfo(tokens[7]);
 		
 			
-			TabixReader.Iterator iter=tabixReader.query(chrom+":"+pos1);
+			TabixReader.Iterator iter=tabixReader.query(chrom+":"+pos1+"-"+(pos1+1));
 			String line2;
-			Map<String,String> map=new LinkedHashMap<String,String>(this.infoIds.size());
+			
 			while((line2=iter.next())!=null)
 				{
+
 				String tokens2[]=tab.split(line2,9);
+				
 				if(tokens2.length<8)
 					{
-					System.err.println("Error not enought columns in "+line2);
-					continue;
+					System.err.println("VCF. Error not enought columns in line "+line2);
+					return;
 					}
 				if(!tokens[0].equals(tokens2[0])) continue;
 				if(!tokens[1].equals(tokens2[1])) continue;
-				if(!tokens[3].equalsIgnoreCase(tokens2[3])) continue;
-				if(!tokens[4].equalsIgnoreCase(tokens2[4])) continue;
-				if((tokens[2].isEmpty() || tokens[2].equals(".")) && !(tokens2[2].isEmpty() || tokens2[2].equals(".")))
+				if(this.refMatters && !tokens[3].equalsIgnoreCase(tokens2[3])) continue;
+				if(this.altMatters && !tokens[4].equalsIgnoreCase(tokens2[4])) continue;
+				
+				
+				
+				if(isEmpty(tokens[2]) && !isEmpty(tokens2[2]))
 					{
 					tokens[2]=tokens2[2];
 					}
+				else if(!isEmpty(tokens[2]) && !isEmpty(tokens2[2]) && !tokens[2].equals(tokens2[2]))
+					{
+					System.err.println("[WARNING]Not same ID for:\n[WARNING]  "+line+"\n[WARNING]  "+line2);
+					if(this.replaceID)
+						{
+						tokens[2]=tokens2[2];
+						}
+					}
 				
-				final String infos=tokens2[7];
+				Map<String,String> infos2=parseInfo(tokens2[7]);
 				for(String id:this.infoIds)
 					{
-					int i=-1;
-					for(;;)
+					if(!infos2.containsKey(id)) continue;
+					if(infos1.containsKey(id) && !this.replaceInfoField)
 						{
-						i=infos.indexOf(id,i+1);
-						if(i==-1) break;
-						if(!(i==0 || infos.charAt(i-1)!=';')) continue;
-						int j=i+id.length();
-						if(j>=infos.length() || infos.charAt(j)!='=') continue;
-						i=j+1;
-						j=infos.indexOf(';',i);
-						if(j==-1) j=infos.length();
-						map.put(id, infos.substring(i,j));
- 						}
+						continue;
+						}
+					infos1.put(id,infos2.get(id));
 					}
 				}
 			StringBuilder b=new StringBuilder();
-			for(String k:map.keySet())
+			for(String k:infos1.keySet())
 				{
-				b.append(k);
-				b.append("=");
-				b.append(map.get(k));
+				b.append(infos1.get(k));
 				b.append(";");
 				}
+			if(b.length()==0) b.append(".");
 			
 			
-			String info=tokens[7];
-			if(info.equals(".") || info.isEmpty())
-				{
-				info=b.toString();
-				}
-			else
-				{
-				info=b.toString()+info;
-				}
 			for(int i=0;i< tokens.length;++i)
 				{
 				if(i>0) out.print('\t');
-				out.print(i==7?info:tokens[i]);
+				out.print(i==7?b.toString():tokens[i]);
 				}
 			out.println();
 			}
@@ -145,11 +183,31 @@ public class VCFTabix
 			{
 			if(args[optind].equals("-h"))
 				{
-				System.out.println(" -f (tabix-file) required.");
-				System.out.println(" -i (String) VCF-INFO-ID optional can be used several times.");
+				System.out.println(" -f (vcf indexed with tabix) REQUIRED.");
+				System.out.println(" -T (tag String) VCF-INFO-ID optional can be used several times.");
+				System.out.println(" -R doesn't use REF allele");
+				System.out.println(" -A doesn't use ALT allele");
+				System.out.println(" -I don't replace ID if it exists.");
+				System.out.println(" -F don't replace INFO field if it exists.");
 				return 0;
 				}
-			else if(args[optind].equals("-i") && optind+1< args.length)
+			else if(args[optind].equals("-F"))
+				{
+				this.replaceInfoField=false;
+				}
+			else if(args[optind].equals("-R"))
+				{
+				this.refMatters=false;
+				}
+			else if(args[optind].equals("-A"))
+				{
+				this.altMatters=false;
+				}
+			else if(args[optind].equals("-I"))
+				{
+				this.replaceID=false;
+				}
+			else if(args[optind].equals("-T") && optind+1< args.length)
 				{
 				this.infoIds.add(args[++optind]);
 				}
