@@ -166,7 +166,7 @@ public class DumpExomeVariantServerData
 			if(args[optind].equals("-h"))
 				{
 				System.out.println("DumpExomeVariantServerData. Author: Pierre Lindenbaum PhD. 2013. Download the data from EVS as a BED: CHROM/START/END/XML");
-				System.out.println("Usage: java -jar dumpevs.jar > evs.bed " );
+				System.out.println("Usage: java -jar evs2bed.jar > evs.bed " );
 				System.out.println("Options:");
 				System.out.println(" -S (int) download using a step of  'S' bases.  OPTIONAL.");
 				System.out.println(" -L  (int) limit to 'N' records for testing.  OPTIONAL.");
