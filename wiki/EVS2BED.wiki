@@ -24,7 +24,7 @@ ant vcftabixml
 
 ==Usage==
 {{{
-Usage: java -jar dumpevs.jar > evs.bed 
+Usage: java -jar evs2bed.jar > evs.bed 
 }}}
 ==Options==
 
@@ -111,5 +111,3 @@ List><snpFunction><chromosome>1</chromosome><position>69761</position><conservat
 ionScore>0.1</conservationScor
 
 }}}
-
-
