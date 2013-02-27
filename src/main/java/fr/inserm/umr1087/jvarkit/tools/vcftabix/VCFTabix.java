@@ -43,17 +43,14 @@ public class VCFTabix
 			{
 			if(info.isEmpty()) continue;
 			int eq=info.indexOf('=');
-			String value;
 			String key;
 			if(eq!=-1)
 				{
 				key=info.substring(0,eq);
-				value=info.substring(eq+1);
 				}
 			else
 				{
 				key=info;
-				value=info;
 				}
 			m.put(key,info);
 			}
