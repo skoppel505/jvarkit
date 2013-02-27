@@ -61,7 +61,7 @@ public class DumpExomeVariantServerData
 	
 	private Element fetchEvsData(String chrom,int start,int end)
 		{
-		LOG.info(chrom+":"+start+"-"+end);
+		LOG.info(chrom+":"+start+"-"+end+ "N="+count_records);
 		try
 			{
 		    URL url = new URL("http://evs.gs.washington.edu:80/wsEVS/EVSDataQueryService");
@@ -178,7 +178,7 @@ public class DumpExomeVariantServerData
 				{
 				this.step_size=Integer.parseInt(args[++optind]);
 				}
-			else if(args[optind].equals("L") && optind+1< args.length)
+			else if(args[optind].equals("-L") && optind+1< args.length)
 				{
 				this.limit_records=Long.parseLong(args[++optind]);
 				}
