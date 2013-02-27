@@ -183,6 +183,8 @@ public class VCFTabix
 			{
 			if(args[optind].equals("-h"))
 				{
+				System.out.println("VCF Tabix. Author: Pierre Lindenbaum PhD.");
+				System.out.println("Usage: java -jar vcftabix.jar -f src.vcf.gz (file.vcf|stdin) " );
 				System.out.println(" -f (vcf indexed with tabix) REQUIRED.");
 				System.out.println(" -T (tag String) VCF-INFO-ID optional can be used several times.");
 				System.out.println(" -R doesn't use REF allele");
