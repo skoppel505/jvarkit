@@ -36,6 +36,7 @@ java -jar dist/vcftabix.jar -f src.vcf.gz (file.vcf|stdin)
  -A doesn't use ALT allele
  -I don't replace ID if it exists.
  -F don't replace INFO field if it exists.
+ -C (TAG) use this tag in case of conflict with the ALT allele.
 }}}
 
 =Example=
