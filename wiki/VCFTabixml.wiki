@@ -39,7 +39,7 @@ ant vcftabixml
 = Usage =
 
 {{{
-java -jar dist/vcftabix.jar -f src.vcf.gz -x style.xsl (file.vcf|stdin)
+java -jar dist/vcftabixml.jar -f src.vcf.gz -x style.xsl (file.vcf|stdin)
 }}}
 = Options =
 
