@@ -80,7 +80,7 @@ public class VCFTabixml
 				}
 			String chrom=tokens[0];
 			Integer pos1=Integer.parseInt(tokens[1]);
-			System.err.println(line);
+			
 			
 			TabixReader.Iterator iter=this.tabixReader.query(chrom+":"+(pos1)+"-"+(pos1+1));
 			String line2=null;
@@ -166,7 +166,7 @@ public class VCFTabixml
 			if(args[optind].equals("-h"))
 				{
 				System.out.println("VCF Tabixml. Author: Pierre Lindenbaum PhD. 2013.");
-				System.out.println("Usage: java -jar vcftabix.jar -f src.vcf.gz (file.vcf|stdin) " );
+				System.out.println("Usage: java -jar vcftabix.jar -f src.vcf.gz -x style.xsl (file.vcf|stdin) " );
 				System.out.println(" -f (BED indexed with tabix. The 4th column is a XML string.) REQUIRED.");
 				System.out.println(" -H (String like '##INFO=...') append extra-info header");
 				System.out.println(" -x xslt-stylesheet. REQUIRED. Should produce a valid set of INFO field.");
