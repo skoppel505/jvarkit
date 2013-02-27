@@ -320,7 +320,9 @@ public class TabixReader
 		}
 	};
 
-	public Iterator query(final int tid, final int beg, final int end) {
+	/** beg=pos0 and end=pos0 half/open interval */
+	public Iterator query(final int tid, final int beg, final int end)
+		{
 		TPair64[] off, chunks;
 		long min_off;
 		TIndex idx = mIndex[tid];

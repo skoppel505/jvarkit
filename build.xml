@@ -148,7 +148,7 @@
 <target name="vcftabixml" >
 	   <mkdir dir="tmp"/>
 	   <mkdir dir="dist"/>
-	   	
+	   <copy todir="dist" file="./src/main/java/fr/inserm/umr1087/jvarkit/tools/vcftabixml/evs2vcf.xsl"/>
 	   <javac destdir="tmp" includeAntRuntime="false" debug="true">
 	   		<src path="src/main/java"/>
 	   		<classpath refid="picard.lib"/>

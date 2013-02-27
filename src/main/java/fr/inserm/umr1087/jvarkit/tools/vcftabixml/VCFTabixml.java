@@ -80,14 +80,13 @@ public class VCFTabixml
 				}
 			String chrom=tokens[0];
 			Integer pos1=Integer.parseInt(tokens[1]);
+			System.err.println(line);
 			
-			
-			TabixReader.Iterator iter=tabixReader.query(chrom+":"+(pos1-1)+"-"+(pos1));
-			String line2;
-			
+			TabixReader.Iterator iter=this.tabixReader.query(chrom+":"+(pos1)+"-"+(pos1+1));
+			String line2=null;
 			
 			String infoToAppend=null;
-			while((line2=iter.next())!=null)
+			while(iter!=null && (line2=iter.next())!=null)
 				{
 
 				String tokens2[]=tab.split(line2,5);
@@ -107,13 +106,14 @@ public class VCFTabixml
 					}
 				
 				
-				
+
 				if(pos1-1!=chromStart) continue;
+
 				
 				transformer.setParameter("vcfchrom",tokens[0]);
 				transformer.setParameter("vcfpos",pos1);
-				transformer.setParameter("vcfref",tokens[3]);
-				transformer.setParameter("vcfalt",tokens[3]);
+				transformer.setParameter("vcfref",tokens[3].toUpperCase());
+				transformer.setParameter("vcfalt",tokens[4].toUpperCase());
 				
 				StringWriter sw=new StringWriter();
 				try {
@@ -123,9 +123,9 @@ public class VCFTabixml
 					}
 				catch (Exception e)
 					{
-					System.err.println("VCTTAbixml error:"+e);
 					continue;
 					}
+				
 				infoToAppend=sw.toString().replace('\n',';').replaceAll("[;]+",";");
 				if(infoToAppend.isEmpty() || infoToAppend.equals(";"))
 					{

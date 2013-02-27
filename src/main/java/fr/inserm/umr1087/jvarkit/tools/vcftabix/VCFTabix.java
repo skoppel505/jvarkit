@@ -119,7 +119,7 @@ public class VCFTabix
 			TabixReader.Iterator iter=tabixReader.query(chrom+":"+pos1+"-"+(pos1+1));
 			String line2;
 			
-			while((line2=iter.next())!=null)
+			while(iter!=null && (line2=iter.next())!=null)
 				{
 
 				String tokens2[]=tab.split(line2,9);
