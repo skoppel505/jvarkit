@@ -75,7 +75,7 @@ public class VCFTabixml
 			String tokens[]=tab.split(line,9);
 			if(tokens.length<8)
 				{
-				System.err.println("Error not enought columns in "+line);
+				System.err.println("[VCFTABIXml] Error not enough columns in "+line);
 				continue;
 				}
 			String chrom=tokens[0];
@@ -93,7 +93,7 @@ public class VCFTabixml
 				
 				if(tokens2.length<4)
 					{
-					System.err.println("VCF. Error not enought columns in line "+line2);
+					System.err.println("[VCFTabixml] VCF. Error not enough columns in tabix.line "+line2);
 					return;
 					}
 				

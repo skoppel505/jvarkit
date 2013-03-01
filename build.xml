@@ -34,6 +34,11 @@
      <path refid="picard.lib"/>
 </path>
 
+<path id="picard.and.bigwig.jars">
+     <path refid="bigwig.lib"/>
+     <path refid="picard.lib"/>
+</path>
+
 
 <target name="mature.projects" depends="picard2xml,cmpbams,vcfbigwig,vcftabix,evs2bed,vcftabixml"/>
 
@@ -104,17 +109,17 @@
 	   	   
 	   <javac destdir="tmp" includeAntRuntime="false" debug="true">
 	   		<src path="src/main/java"/>
-	   		<classpath refid="bigwig.lib"/>
+	   		<classpath refid="picard.and.bigwig.jars"/>
 	   		<include name="**/VCFBigWig.java"/>
 	   </javac>
 	   
-	   <pathconvert property="manifest_cp" pathsep=" " refid="bigwig.lib"/>
+	   <pathconvert property="manifest_cp1" pathsep=" " refid="picard.and.bigwig.jars"/>
 
 	   <jar jarfile="dist/vcfbigwig.jar">
 		     <fileset dir="tmp" />
 		     <manifest>
 		       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.vcfbigwig.VCFBigWig"/>
-		        <attribute name="Class-Path" value="${manifest_cp}"/>
+		        <attribute name="Class-Path" value="${manifest_cp1}"/>
 		     </manifest>
 	 	</jar>
 	   
