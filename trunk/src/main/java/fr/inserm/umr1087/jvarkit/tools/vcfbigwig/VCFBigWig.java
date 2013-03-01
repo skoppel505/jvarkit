@@ -48,7 +48,7 @@ public class VCFBigWig
 			String tokens[]=tab.split(line,9);
 			if(tokens.length<8)
 				{
-				System.err.println("Error not enought columns in "+line);
+				System.err.println("Error not enough columns in "+line);
 				continue;
 				}
 			String chrom=tokens[0];
@@ -73,7 +73,7 @@ public class VCFBigWig
 			double total=0L;
 			for(Float f:values) total+=f;
 			
-			String newinfp=this.infoId+"="+(total/values.size());
+			String newinfp=this.infoId+"="+String.format("%0.2f",(float)(total/values.size()));
 			String info=tokens[7];
 			if(info.equals(".") || info.isEmpty())
 				{
