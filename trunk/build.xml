@@ -62,7 +62,7 @@
    		<include name="**/PicardMetricsToXML.java"/>
    </javac>
    
-   <pathconvert property="manifest_cp" pathsep=" " >
+   <pathconvert property="manifest_cpA" pathsep=" " >
 		 <path refid="picard.lib"/>
    </pathconvert>  
    
@@ -70,7 +70,7 @@
 	     <fileset dir="tmp" />
 	     <manifest>
 	       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.picard.metrics2xml.PicardMetricsToXML"/>
-	        <attribute name="Class-Path" value="${manifest_cp}"/>
+	        <attribute name="Class-Path" value="${manifest_cpA}"/>
 	     </manifest>
  	</jar>
    
@@ -88,14 +88,14 @@
 	   		<include name="**/CompareBams.java"/>
 	   </javac>
 	   
-	   <pathconvert property="manifest_cp" pathsep=" " refid="picard.and.bdb.jars"/>
+	   <pathconvert property="manifest_cpB" pathsep=" " refid="picard.and.bdb.jars"/>
 
 	  <echo>path= "${manifest_cp}</echo>
 	   <jar jarfile="dist/comparebams.jar">
 		     <fileset dir="tmp" />
 		     <manifest>
 		       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.cmpbams.CompareBams"/>
-		        <attribute name="Class-Path" value="${manifest_cp}"/>
+		        <attribute name="Class-Path" value="${manifest_cpB}"/>
 		     </manifest>
 	 	</jar>
 	   
@@ -137,13 +137,13 @@
 	   		<include name="**/VCFTabix.java"/>
 	   </javac>
 	   
-	   <pathconvert property="manifest_cp" pathsep=" " refid="picard.lib"/>
+	   <pathconvert property="manifest_cp2" pathsep=" " refid="picard.lib"/>
 
 	   <jar jarfile="dist/vcftabix.jar">
 		     <fileset dir="tmp" />
 		     <manifest>
 		        <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.vcftabix.VCFTabix"/>
-		        <attribute name="Class-Path" value="${manifest_cp}"/>
+		        <attribute name="Class-Path" value="${manifest_cp2}"/>
 		     </manifest>
 	 	</jar>
 	   
@@ -160,13 +160,13 @@
 	   		<include name="**/VCFTabixml.java"/>
 	   </javac>
 	   
-	   <pathconvert property="manifest_cp" pathsep=" " refid="picard.lib"/>
+	   <pathconvert property="manifest_cp3" pathsep=" " refid="picard.lib"/>
 
 	   <jar jarfile="dist/vcftabixml.jar">
 		     <fileset dir="tmp" />
 		     <manifest>
 		        <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.vcftabixml.VCFTabixml"/>
-		        <attribute name="Class-Path" value="${manifest_cp}"/>
+		        <attribute name="Class-Path" value="${manifest_cp3}"/>
 		     </manifest>
 	 	</jar>
 	   
@@ -183,13 +183,13 @@
 	   		<include name="**/DumpExomeVariantServerData.java"/>
 	   </javac>
 	   
-	   <pathconvert property="manifest_cp" pathsep=" " refid="picard.lib"/>
+	   <pathconvert property="manifest_cp4" pathsep=" " refid="picard.lib"/>
 
 	   <jar jarfile="dist/evs2bed.jar">
 		     <fileset dir="tmp" />
 		     <manifest>
 		        <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.evs2bed.DumpExomeVariantServerData"/>
-		        <attribute name="Class-Path" value="${manifest_cp}"/>
+		        <attribute name="Class-Path" value="${manifest_cp4}"/>
 		     </manifest>
 	 	</jar>
 	   
