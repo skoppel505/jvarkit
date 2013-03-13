@@ -40,7 +40,7 @@
 </path>
 
 
-<target name="mature.projects" depends="picard2xml,cmpbams,vcfbigwig,vcftabix,evs2bed,vcftabixml"/>
+<target name="mature.projects" depends="samjs,picard2xml,cmpbams,vcfbigwig,vcftabix,evs2bed,vcftabixml"/>
 
 <target name="all" depends="mature.projects,dist/cluster20120920,dist/invert20120917,dist/cnv20120907.jar">
 </target>
@@ -195,6 +195,33 @@
 	   
     <delete dir="tmp"/>
 </target>	
+
+	
+<target name="samjs" >
+	   <mkdir dir="tmp"/>
+	   <mkdir dir="dist"/>
+	   	   
+	   <javac destdir="tmp" includeAntRuntime="false" debug="true">
+	   		<src path="src/main/java"/>
+	   		<classpath refid="picard.lib"/>
+	   		<include name="**/SamJavascript.java"/>
+	   </javac>
+	   
+	   <pathconvert property="manifest_cp5" pathsep=" " >
+			 <path refid="picard.lib"/>
+	   </pathconvert>  
+	   
+	   <jar jarfile="dist/samjs.jar">
+		     <fileset dir="tmp" />
+		     <manifest>
+		       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.samjs.SamJavascript"/>
+		        <attribute name="Class-Path" value="${manifest_cp5}"/>
+		     </manifest>
+	 	</jar>
+	   
+	    <delete dir="tmp"/>
+</target>
+	
 	
 	
 <target name="dist/cluster20120920" >
