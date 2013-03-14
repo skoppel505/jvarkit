@@ -6,7 +6,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.regex.Pattern;
-
+import java.util.logging.Logger;
 import net.sf.picard.util.Interval;
 import net.sf.picard.util.IntervalList;
 import net.sf.picard.util.SamLocusIterator;
@@ -15,6 +15,7 @@ import net.sf.samtools.SAMFileReader.ValidationStringency;
 
 public class BamStats04
 	{
+	private static final Logger LOG=Logger.getLogger("bamstats04");
 	private File bedFile=null;
 	private boolean skipDuplicates=true;
 	private int minQual=0;
@@ -28,6 +29,7 @@ public class BamStats04
 	
 	private void scan(File bam) throws Exception
 		{
+		LOG.info("Scanning "+bam);
 		long bases2count[]=new long[num_bin];
 		Arrays.fill(bases2count, 0L);
 		Pattern tab=Pattern.compile("[\t]");
@@ -38,23 +40,29 @@ public class BamStats04
 		String line=null;
 		while((line=in.readLine())!=null)
 			{
+			LOG.info(line);
 			if(line.isEmpty() || line.startsWith("#")) continue;
 			tokens=tab.split(line,5);
 			if(tokens.length<3) throw new IOException("bad bed line in "+line+" "+this.bedFile);
 			String chrom=tokens[0];
 			int chromStart=Integer.parseInt(tokens[1]);
 			int chromEnd=Integer.parseInt(tokens[2]);
+			LOG.info(samReader.getFileHeader().toString());
 			IntervalList L=new IntervalList(samReader.getFileHeader());
 			/* picard javadoc:  - Sequence name - Start position (1-based) - End position (1-based, end inclusive)  */
 			Interval interval=new Interval(chrom, chromStart+1, chromEnd);
 			L.add(interval);
+			
 			int counts[]=new int[chromEnd-chromStart];
 			Arrays.fill(counts, 0);
+			LOG.info(samReader.toString());
+			LOG.info(L.toString());
 			SamLocusIterator iter=new SamLocusIterator(samReader, L, true);
 			iter.setMappingQualityScoreCutoff(this.minQual);
 			iter.setEmitUncoveredLoci(true);
-			while(iter.hasNext())
+			while(iter.hasNext() )
 				{
+				
 				SamLocusIterator.LocusInfo li=iter.next();
 				if(li.getPosition()< interval.getStart()) continue;
 				if(li.getPosition()> interval.getEnd()) continue;
@@ -91,7 +99,7 @@ public class BamStats04
 	
 	private void run(String args[]) throws Exception
 		{
-		SAMFileReader.setDefaultValidationStringency(ValidationStringency.LENIENT);
+		SAMFileReader.setDefaultValidationStringency(ValidationStringency.SILENT);
 		int optind=0;
 		while(optind<args.length)
 			{
@@ -99,7 +107,7 @@ public class BamStats04
 				{
 				System.out.println("Pierre Lindenbaum PhD. 2013.");
 				System.out.println(" -b bedfile (required).");
-				System.out.println(" -q (int) min-qual.");
+				System.out.println(" -m (int) min-qual.");
 				System.out.println(" -D do NOT ignore duplicates.");
 				return;
 				}
@@ -107,7 +115,7 @@ public class BamStats04
 				{
 				this.bedFile=new File(args[++optind]);
 				}
-			else if(args[optind].equals("-q") && optind+1< args.length)
+			else if(args[optind].equals("-m") && optind+1< args.length)
 				{
 				this.minQual=Integer.parseInt(args[++optind]);
 				}
