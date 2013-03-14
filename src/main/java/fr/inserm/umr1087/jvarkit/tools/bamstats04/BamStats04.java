@@ -7,11 +7,10 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.regex.Pattern;
 import java.util.logging.Logger;
-import net.sf.picard.util.Interval;
-import net.sf.picard.util.IntervalList;
-import net.sf.picard.util.SamLocusIterator;
 import net.sf.samtools.SAMFileReader;
 import net.sf.samtools.SAMFileReader.ValidationStringency;
+import net.sf.samtools.SAMRecord;
+import net.sf.samtools.SAMRecordIterator;
 
 public class BamStats04
 	{
@@ -40,41 +39,41 @@ public class BamStats04
 		String line=null;
 		while((line=in.readLine())!=null)
 			{
-			LOG.info(line);
 			if(line.isEmpty() || line.startsWith("#")) continue;
 			tokens=tab.split(line,5);
 			if(tokens.length<3) throw new IOException("bad bed line in "+line+" "+this.bedFile);
 			String chrom=tokens[0];
-			int chromStart=Integer.parseInt(tokens[1]);
-			int chromEnd=Integer.parseInt(tokens[2]);
-			LOG.info(samReader.getFileHeader().toString());
-			IntervalList L=new IntervalList(samReader.getFileHeader());
+			int chromStart1= 1+Integer.parseInt(tokens[1]);//add one
+			int chromEnd1= Integer.parseInt(tokens[2]);
 			/* picard javadoc:  - Sequence name - Start position (1-based) - End position (1-based, end inclusive)  */
-			Interval interval=new Interval(chrom, chromStart+1, chromEnd);
-			L.add(interval);
 			
-			int counts[]=new int[chromEnd-chromStart];
+			int counts[]=new int[chromEnd1-chromStart1+1];
 			Arrays.fill(counts, 0);
-			LOG.info(samReader.toString());
-			LOG.info(L.toString());
-			SamLocusIterator iter=new SamLocusIterator(samReader, L, true);
-			iter.setMappingQualityScoreCutoff(this.minQual);
-			iter.setEmitUncoveredLoci(true);
-			while(iter.hasNext() )
+			
+			/**
+			 *     start - 1-based, inclusive start of interval of interest. Zero implies start of the reference sequence.
+    		*	   end - 1-based, inclusive end of interval of interest. Zero implies end of the reference sequence. 
+			 */
+			SAMRecordIterator r=samReader.queryOverlapping(chrom, chromStart1, chromEnd1);
+			while(r.hasNext())
 				{
-				
-				SamLocusIterator.LocusInfo li=iter.next();
-				if(li.getPosition()< interval.getStart()) continue;
-				if(li.getPosition()> interval.getEnd()) continue;
-				int count=0;
-				for(SamLocusIterator.RecordAndOffset sr: li.getRecordAndPositions())
+				SAMRecord rec=r.next();
+				if(rec.getReadUnmappedFlag()) continue;
+				if(skipDuplicates && rec.getDuplicateReadFlag() ) continue;
+				if(!rec.getReferenceName().equals(chrom)) continue;
+				if(rec.getMappingQuality()< this.minQual) continue;
+				int end=rec.getAlignmentEnd();
+				for(int pos=rec.getAlignmentStart();
+						pos<=end;
+						++pos)
 					{
-					if(skipDuplicates && sr.getRecord().getDuplicateReadFlag() ) continue;
-					count++;
+					if(pos< chromStart1) continue;
+					if(pos> chromEnd1) continue;
+					counts[pos-chromStart1]++;
 					}
-				counts[li.getPosition()-interval.getStart()]=count;
 				}
-			iter.close();
+			
+			r.close();
 			
 			for(int depth:counts)
 				{
