@@ -178,15 +178,31 @@ public class VCFBed
 				System.out.println("VCFBed. Author: Pierre Lindenbaum PhD. 2013.");
 				System.out.println("Usage: java -jar vcftabed.jar (-e script | -F scriptfile) -f src.vcf.gz (file.vcf|stdin) " );
 				System.out.println(" -f (vcf indexed with tabix) REQUIRED.");
-				System.out.println(" -T ( String) add extra info header line. Can be called multiple time.");
+				System.out.println(" -t ( String) add extra info header line. Can be called multiple time.");
+				System.out.println(" -T ( file) file containing extra info header line. Can be called multiple time.");
+				System.out.println(" -e (script).");
+				System.out.println(" -E (script file ).");
+
 				}
 			else if(args[optind].equals("-e") && optind+1< args.length)
 				{
 				scriptStr=args[++optind];
 				}
-			else if(args[optind].equals("-F") && optind+1< args.length)
+			else if(args[optind].equals("-E") && optind+1< args.length)
 				{
 				scriptFile=new File(args[++optind]);
+				}
+			else if(args[optind].equals("-T") && optind+1< args.length)
+				{
+				File extra=new File(args[++optind]);
+				BufferedReader in=new BufferedReader(new FileReader(extra));
+				String line;
+				while((line=in.readLine())!=null)
+					{
+					if(line.isEmpty()) continue;
+					this.extraHeaderLine.add(line);
+					}
+				in.close();
 				}
 			else if(args[optind].equals("-T") && optind+1< args.length)
 				{
