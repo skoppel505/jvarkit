@@ -40,7 +40,7 @@
 </path>
 
 
-<target name="mature.projects" depends="bamstats04,samjs,picard2xml,cmpbams,vcfbigwig,vcftabix,evs2bed,vcftabixml"/>
+<target name="mature.projects" depends="vcfbedjs,bamstats04,samjs,picard2xml,cmpbams,vcfbigwig,vcftabix,evs2bed,vcftabixml"/>
 
 <target name="all" depends="mature.projects,dist/cluster20120920,dist/invert20120917,dist/cnv20120907.jar">
 </target>
@@ -248,6 +248,33 @@
 	    <delete dir="tmp"/>
 </target>
 
+
+<target name="vcfbedjs" >
+	   <mkdir dir="tmp"/>
+	   <mkdir dir="dist"/>
+	   	   
+	   <javac destdir="tmp" includeAntRuntime="false" debug="true">
+	   		<src path="src/main/java"/>
+	   		<classpath refid="picard.lib"/>
+	   		<include name="**/VCFBed.java"/>
+	   </javac>
+	   
+	   <pathconvert property="manifest_cp7" pathsep=" " >
+			 <path refid="picard.lib"/>
+	   </pathconvert>  
+	   
+	   <jar jarfile="dist/vcfbedjs.jar">
+		     <fileset dir="tmp" />
+		     <manifest>
+		       <attribute name="Main-Class" value="fr.inserm.umr1087.jvarkit.tools.vcfbed.VCFBed"/>
+		        <attribute name="Class-Path" value="${manifest_cp7}"/>
+		     </manifest>
+	 	</jar>
+	   
+	    <delete dir="tmp"/>
+</target>
+
+	
 	
 <target name="dist/cluster20120920" >
 	   <mkdir dir="tmp"/>

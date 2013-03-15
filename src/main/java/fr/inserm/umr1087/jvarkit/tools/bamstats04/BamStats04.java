@@ -20,6 +20,7 @@ public class BamStats04
 	private int minQual=0;
 	private int basesperbin=10;
 	private int num_bin=20;
+	private boolean cumulative=true;
 	private BamStats04()
 		{
 		
@@ -79,7 +80,17 @@ public class BamStats04
 				{
 				int cat=depth/this.basesperbin;
 				if(cat>=bases2count.length) cat=bases2count.length-1;
-				bases2count[cat]++;
+				if(cumulative)
+					{
+					for(int j=0;j<=cat;++j)
+						{
+						bases2count[j]++;
+						}
+					}
+				else
+					{
+					bases2count[cat]++;
+					}
 				++total;
 				}
 			
@@ -108,6 +119,7 @@ public class BamStats04
 				System.out.println(" -b bedfile (required).");
 				System.out.println(" -m (int) min-qual.");
 				System.out.println(" -D do NOT ignore duplicates.");
+				System.out.println(" -c NOT cumulative results.");
 				return;
 				}
 			else if(args[optind].equals("-b") && optind+1< args.length)
@@ -121,6 +133,10 @@ public class BamStats04
 			else if(args[optind].equals("-D"))
 				{
 				this.skipDuplicates=false;
+				}
+			else if(args[optind].equals("-c"))
+				{
+				this.cumulative=false;
 				}
 			else if(args[optind].equals("--"))
 				{
