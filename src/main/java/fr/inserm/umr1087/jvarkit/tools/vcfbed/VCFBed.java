@@ -3,7 +3,6 @@ package fr.inserm.umr1087.jvarkit.tools.vcfbed;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.util.ArrayList;
@@ -20,9 +19,10 @@ import javax.script.CompiledScript;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 
+import fr.inserm.umr1087.jvarkit.util.vcf.VCFUtils;
+
 
 import net.sf.samtools.tabix.TabixReader;
-import net.sf.samtools.util.BlockCompressedInputStream;
 
 
 public class VCFBed
@@ -33,8 +33,63 @@ public class VCFBed
 	private PrintStream out=System.out;
 	private String tabixFile;
 	private TabixReader tabixReader =null;
-	private Set<String> infoIds=new LinkedHashSet<String>();
+	private Set<String> extraHeaderLine=new LinkedHashSet<String>();
+	private VCFUtils vcfUtils=new VCFUtils();
 	
+	
+	public class Context
+		{
+		private String chrom;
+		private int pos;
+		private String ref;
+		private String alt;
+		
+		private String id=null;
+		private Set<String> filters=new LinkedHashSet<String>();
+		private Map<String,String> info=new LinkedHashMap<String, String>();
+		
+		
+		public String getChrom()
+			{
+			return chrom;
+			}
+		
+		
+		public int getPos()
+			{
+			return pos;
+			}
+		
+		
+		public String getRef()
+			{
+			return ref;
+			}
+				
+		public String getAlt()
+			{
+			return alt;
+			}
+		
+		public String getId()
+			{
+			return id;
+			}
+		
+		public void setId(String id)
+			{
+			this.id = id;
+			}
+		public Set<String> getFilterSet()
+			{
+			return filters;
+			}
+		
+		public Map<String, String> getInfoMap()
+			{
+			return info;
+			}
+		}
 	
 	private void run(BufferedReader in) throws Exception
 		{
@@ -51,28 +106,10 @@ public class VCFBed
 				if(line.startsWith("#CHROM"))
 					{
 					out.println("##Annotated with "+getClass()+":"+tabixFile);
-					if(!this.infoIds.isEmpty())
+					for(String s:this.extraHeaderLine)
 						{
-						BlockCompressedInputStream src=new BlockCompressedInputStream(new File(tabixFile));
-						BufferedReader r2=new BufferedReader(new InputStreamReader(src));
-						String line2;
-						while((line2=r2.readLine())!=null)
-							{
-							if(line2.startsWith("#CHROM")) break;
-							if(!line2.startsWith("##")) break;
-							if(!line2.startsWith("##INFO=")) continue;
-							
-							int i=line2.indexOf("ID=");
-							if(i==-1) continue;
-							int j=line2.indexOf(',',i+1);
-							if(j==-1) j=line2.indexOf('>',i+1);
-							if(j==-1) continue;
-							if(this.infoIds.contains(line2.substring(i+3,j)))
-								{
-								this.out.println(line2);
-								}
-							} 
-						r2.close();
+						if(!s.startsWith("##")) out.print("##");
+						out.println(s);
 						}
 					
 					out.println(line);
@@ -100,26 +137,29 @@ public class VCFBed
 				{
 				tabixrows.add(line2);
 				}
-			bindings.put("chrom",chrom);
-			bindings.put("pos",pos1);
-			bindings.put("id",tokens[2]);
-			bindings.put("ref",tokens[3]);
-			bindings.put("alt",tokens[4]);
+			Context ctx=new Context();
+			ctx.chrom=chrom;
+			ctx.pos=pos1;
+			ctx.id=tokens[2];
+			ctx.ref=tokens[3];
+			ctx.alt=tokens[4];
+			ctx.filters=this.vcfUtils.parseFilters(tokens[6]);
+			ctx.info=this.vcfUtils.parseInfo(tokens[7]);
+			
+			bindings.put("context",ctx);
 			bindings.put("tabix",tabixrows);
 			
-			Object result = script.eval(bindings);
-			if(result!=null)
-				{
-				
-				}
+			script.eval(bindings);
 			
-			StringBuilder b=new StringBuilder();
 			
+			tokens[2]=(this.vcfUtils.isEmpty(ctx.getId())?".":ctx.getId());
+			tokens[6]=this.vcfUtils.joinFilters(ctx.getFilterSet());
+			tokens[7]=this.vcfUtils.joinInfo(ctx.getInfoMap());
 			
 			for(int i=0;i< tokens.length;++i)
 				{
 				if(i>0) out.print('\t');
-				out.print(i==7?b.toString():tokens[i]);
+				out.print(tokens[i]);
 				}
 			out.println();
 			}
@@ -135,22 +175,22 @@ public class VCFBed
 			{
 			if(args[optind].equals("-h"))
 				{
-				System.out.println("VCF Tabix. Author: Pierre Lindenbaum PhD. 2013.");
-				System.out.println("Usage: java -jar vcftabix.jar -f src.vcf.gz (file.vcf|stdin) " );
+				System.out.println("VCFBed. Author: Pierre Lindenbaum PhD. 2013.");
+				System.out.println("Usage: java -jar vcftabed.jar (-e script | -F scriptfile) -f src.vcf.gz (file.vcf|stdin) " );
 				System.out.println(" -f (vcf indexed with tabix) REQUIRED.");
-				System.out.println(" -T (tag String) VCF-INFO-ID optional can be used several times.");
+				System.out.println(" -T ( String) add extra info header line. Can be called multiple time.");
 				}
 			else if(args[optind].equals("-e") && optind+1< args.length)
 				{
 				scriptStr=args[++optind];
 				}
-			else if(args[optind].equals("-f") && optind+1< args.length)
+			else if(args[optind].equals("-F") && optind+1< args.length)
 				{
 				scriptFile=new File(args[++optind]);
 				}
 			else if(args[optind].equals("-T") && optind+1< args.length)
 				{
-				this.infoIds.add(args[++optind]);
+				this.extraHeaderLine.add(args[++optind]);
 				}
 			else if(args[optind].equals("-f") && optind+1< args.length)
 				{

@@ -6,11 +6,12 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+
+import fr.inserm.umr1087.jvarkit.util.vcf.VCFUtils;
 
 
 import net.sf.samtools.tabix.TabixReader;
@@ -23,40 +24,15 @@ public class VCFTabix
 	private String tabixFile;
 	private TabixReader tabixReader =null;
 	private Set<String> infoIds=new LinkedHashSet<String>();
-	private Pattern semicolon=Pattern.compile(";");
 	private boolean replaceInfoField=true;
 	private boolean refMatters=true;
 	private boolean altMatters=true;
 	private boolean replaceID=true;
 	private String altConflictTag=null;
+	private VCFUtils vcfUtils=new VCFUtils();
 	
-	private boolean isEmpty(String s)
-		{
-		return s==null || s.equals(".") || s.isEmpty();
-		}
 	
-	private Map<String,String> parseInfo(String infoField)
-		{
-		Map<String,String> m=new LinkedHashMap<String,String>();
-		if(isEmpty(infoField)) return m;
-		for(String info:semicolon.split(infoField))
-			{
-			if(info.isEmpty()) continue;
-			int eq=info.indexOf('=');
-			String key;
-			if(eq!=-1)
-				{
-				key=info.substring(0,eq);
-				}
-			else
-				{
-				key=info;
-				}
-			m.put(key,info);
-			}
-
-		return m;
-		}
+	
 	private void run(BufferedReader in) throws IOException
 		{
 		Pattern tab=Pattern.compile("[\t]");
@@ -113,7 +89,7 @@ public class VCFTabix
 				}
 			String chrom=tokens[0];
 			Integer pos1=Integer.parseInt(tokens[1]);
-			Map<String,String> infos1=parseInfo(tokens[7]);
+			Map<String,String> infos1=this.vcfUtils.parseInfo(tokens[7]);
 		
 			
 			TabixReader.Iterator iter=tabixReader.query(chrom+":"+pos1+"-"+(pos1+1));
@@ -134,7 +110,7 @@ public class VCFTabix
 				if(this.refMatters && !tokens[3].equalsIgnoreCase(tokens2[3])) continue;
 				
 				
-				Map<String,String> infos2=parseInfo(tokens2[7]);
+				Map<String,String> infos2=this.vcfUtils.parseInfo(tokens2[7]);
 				
 				if(!tokens[4].equalsIgnoreCase(tokens2[4]))
 					{
@@ -142,19 +118,16 @@ public class VCFTabix
 					}
 				
 				
-				
-				
-				
 				if(altConflictTag!=null && !tokens[4].equalsIgnoreCase(tokens2[4]))
 					{
-					infos1.put(this.altConflictTag,this.altConflictTag+"="+tokens2[4]);
+					infos1.put(this.altConflictTag,tokens2[4]);
 					}
 				
-				if(isEmpty(tokens[2]) && !isEmpty(tokens2[2]))
+				if(this.vcfUtils.isEmpty(tokens[2]) && !this.vcfUtils.isEmpty(tokens2[2]))
 					{
 					tokens[2]=tokens2[2];
 					}
-				else if(!isEmpty(tokens[2]) && !isEmpty(tokens2[2]) && !tokens[2].equals(tokens2[2]))
+				else if(!this.vcfUtils.isEmpty(tokens[2]) && !this.vcfUtils.isEmpty(tokens2[2]) && !tokens[2].equals(tokens2[2]))
 					{
 					System.err.println("[WARNING]Not same ID for:\n[WARNING]  "+line+"\n[WARNING]  "+line2);
 					if(this.replaceID)
@@ -174,19 +147,14 @@ public class VCFTabix
 					infos1.put(id,infos2.get(id));
 					}
 				}
-			StringBuilder b=new StringBuilder();
-			for(String k:infos1.keySet())
-				{
-				b.append(infos1.get(k));
-				b.append(";");
-				}
-			if(b.length()==0) b.append(".");
+			String newinfo=this.vcfUtils.joinInfo(infos1);
+			
 			
 			
 			for(int i=0;i< tokens.length;++i)
 				{
 				if(i>0) out.print('\t');
-				out.print(i==7?b.toString():tokens[i]);
+				out.print(i==7?newinfo.toString():tokens[i]);
 				}
 			out.println();
 			}
