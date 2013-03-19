@@ -146,8 +146,8 @@ public class VCFBed
 			ctx.filters=this.vcfUtils.parseFilters(tokens[6]);
 			ctx.info=this.vcfUtils.parseInfo(tokens[7]);
 			
-			bindings.put("context",ctx);
-			bindings.put("tabix",tabixrows);
+			bindings.put("ctx",ctx);
+			bindings.put("tabix",tabixrows.toArray());
 			
 			script.eval(bindings);
 			
@@ -182,7 +182,7 @@ public class VCFBed
 				System.out.println(" -T ( file) file containing extra info header line. Can be called multiple time.");
 				System.out.println(" -e (script).");
 				System.out.println(" -E (script file ).");
-
+				return 0;
 				}
 			else if(args[optind].equals("-e") && optind+1< args.length)
 				{
@@ -245,11 +245,16 @@ public class VCFBed
 			this.script=compilingEngine.compile(r);
 			r.close();
 			}
-		else
+		else if(scriptStr!=null)
 			{
 			this.script=compilingEngine.compile(scriptStr);
 			}
-
+		else
+			{
+			System.err.println("Script missing.");
+			System.exit(-1);
+			}
+		
 		
 		if(tabixFile==null)
 			{
