@@ -144,13 +144,6 @@ public class SplitBam
 			
 			if(writer==null)
 				{
-				if(!all_chromosomes.contains(recordChrom))
-					{
-					throw new IOException(
-						"Now in "+recordChrom+". Closing BAM for "+recordChrom+" N="+nrecords
-						);
-					}
-				
 				File fileout=new File(this.outFilePattern.replaceAll(REPLACE_CHROM, recordChrom));
 				LOG.info("opening "+fileout);
 				writer=sf.makeBAMWriter(header,this.input_is_sorted,fileout);
