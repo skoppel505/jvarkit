@@ -4,15 +4,18 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 
 import net.sf.picard.reference.IndexedFastaSequenceFile;
 import net.sf.samtools.DefaultSAMRecordFactory;
 import net.sf.samtools.SAMFileHeader;
+import net.sf.samtools.SAMFileHeader.SortOrder;
 import net.sf.samtools.SAMFileReader;
 import net.sf.samtools.SAMFileWriter;
 import net.sf.samtools.SAMFileWriterFactory;
@@ -33,7 +36,10 @@ public class SplitBam
 	private SAMSequenceDictionary  samSequenceDictionary;
 	private boolean if_bam_empty_add_mock_sam_record=false;
 	private long id_generator=System.currentTimeMillis();
-	
+	private boolean input_is_sorted=false;
+	private boolean create_index=false;
+	private File tmpDir=null;
+
 	private SplitBam()
 		{
 		
@@ -59,7 +65,7 @@ public class SplitBam
 			rec.setMateUnmappedFlag(true);
 			rec.setReadPairedFlag(true);
 			rec.setReadName("MOCKREAD"+(id_generator)+":6:190:289:82");
-			rec.setAttribute("MOCKREAD",1);
+			rec.setAttribute("MK",1);
 			if(G!=null && !G.isEmpty())
 				{
 				rec.setAttribute("RG", G.get(0).getId());
@@ -74,7 +80,7 @@ public class SplitBam
 			String chromName
 			) throws IOException
 		{
-		File fileout=new File(this.outFilePattern.replace(REPLACE_CHROM, chromName));
+		File fileout=new File(this.outFilePattern.replaceAll(REPLACE_CHROM, chromName));
 		LOG.info("creating mock BAM file "+fileout);
 		SAMFileWriter sw=sf.makeBAMWriter(header, true, fileout);
 		if(if_bam_empty_add_mock_sam_record)
@@ -91,19 +97,19 @@ public class SplitBam
 			{
 			all_chromosomes.add(seq.getSequenceName());
 			}
-		Set<String> seen=new HashSet<String>(this.samSequenceDictionary.getSequences().size());
-		String prevChrom=null;
+		Map<String,SAMFileWriter> seen=new HashMap<String,SAMFileWriter>(all_chromosomes.size());
 		SAMFileReader samFileReader=new SAMFileReader(in);
 		samFileReader.setValidationStringency(ValidationStringency.SILENT);
 		SAMFileHeader header=samFileReader.getFileHeader();
-		if(header.getSortOrder()  != SAMFileHeader.SortOrder.coordinate)
-			{
-			LOG.warning("input Bam file is not sorted on coordinate.");
-			}
+		header.setSortOrder(SortOrder.coordinate);
 		
         SAMFileWriterFactory sf=new SAMFileWriterFactory();
-        sf.setCreateIndex(false);
-        SAMFileWriter sw=null;
+       if(this.tmpDir!=null)
+    	   {
+    	   sf.setTempDirectory(this.tmpDir);
+    	   }
+        sf.setCreateIndex(this.create_index);
+        
         long nrecords=0L;
        
        
@@ -134,47 +140,47 @@ public class SplitBam
 					throw new IOException("Undefined chromosome "+recordChrom+" (not in ref dictionary "+all_chromosomes+").");
 					}
 				}
-			if(prevChrom==null || !prevChrom.equals(recordChrom))
+			SAMFileWriter writer=seen.get(recordChrom);
+			
+			if(writer==null)
 				{
-				if(sw!=null)
-					{
-					LOG.info("Now in "+recordChrom+". Closing BAM for "+prevChrom+" N="+nrecords);
-					sw.close();
-					}
-				if(seen.contains(recordChrom))
+				if(!all_chromosomes.contains(recordChrom))
 					{
 					throw new IOException(
-							"Chromosome "+recordChrom+" was seen twice." +
-							"record is "+record.getReadName());
+						"Now in "+recordChrom+". Closing BAM for "+recordChrom+" N="+nrecords
+						);
 					}
-				seen.add(recordChrom);
-				File fileout=new File(this.outFilePattern.replace(REPLACE_CHROM, recordChrom));
-				sw=sf.makeBAMWriter(header, true, fileout);
+				
+				File fileout=new File(this.outFilePattern.replaceAll(REPLACE_CHROM, recordChrom));
+				LOG.info("opening "+fileout);
+				writer=sf.makeBAMWriter(header,this.input_is_sorted,fileout);
+				seen.put(recordChrom, writer);
 				nrecords=0L;
-				prevChrom=recordChrom;
 				}
 			
-			sw.addAlignment(record);
+			writer.addAlignment(record);
 			}
-		if(sw!=null)
+		
+		for(String k:seen.keySet())
 			{
-			LOG.info("Closing BAM for "+prevChrom+" N="+nrecords);
-			sw.close();
+			LOG.info("closing "+k);
+			seen.get(k).close();
 			}
+		samFileReader.close();
 		
 		if(generate_empty_bams)
 			{
 			for(SAMSequenceRecord seq:this.samSequenceDictionary.getSequences())
 				{
-				if(seen.contains(seq.getSequenceName())) continue;
+				if(seen.containsKey(seq.getSequenceName())) continue;
 				createEmptyFile(sf,header, seq.getSequenceName());
 				}
-			if(!seen.contains(this.underterminedName))
+			if(!seen.containsKey(this.underterminedName))
 				{
 				createEmptyFile(sf,header, this.underterminedName);
 				}
 			}
-		samFileReader.close();
+		
 		}
 	
 	
@@ -198,7 +204,9 @@ public class SplitBam
 				System.err.println(" -e | --empty : generate EMPTY bams for chromosome having no read mapped");
 				System.err.println(" -m | --mock : if option '-e', add a mock pair of sam records to the bam");
 				System.err.println(" -p (output file/bam pattern) REQUIRED. MUST contain "+REPLACE_CHROM+" and end with .bam");
-				
+				System.err.println(" -s assume input is sorted.");
+				System.err.println(" -x | --index  create index.");
+				System.err.println(" -t | --tmp  (dir) tmp file directory");
 				return;
 				}
 			else if(args[optind].equals("-e")|| args[optind].equals("--empty"))
@@ -207,7 +215,12 @@ public class SplitBam
 				}
 			else if(args[optind].equals("-m") || args[optind].equals("--mock"))
 				{
+				this.generate_empty_bams=true;
 				this.if_bam_empty_add_mock_sam_record=true;
+				}
+			else if((args[optind].equals("-t") || args[optind].equals("--tmp")) && optind+1< args.length)
+				{
+				this.tmpDir=new File(args[++optind]);
 				}
 			else if(args[optind].equals("-R") && optind+1< args.length)
 				{
@@ -220,6 +233,14 @@ public class SplitBam
 			else if(args[optind].equals("-p") && optind+1< args.length)
 				{
 				outFilePattern= args[++optind];
+				}
+			else if(args[optind].equals("-s"))
+				{
+				this.input_is_sorted=true;
+				}
+			else if(args[optind].equals("-x") || args[optind].equals("--index"))
+				{
+				this.create_index=true;
 				}
 			else if(args[optind].equals("--"))
 				{
