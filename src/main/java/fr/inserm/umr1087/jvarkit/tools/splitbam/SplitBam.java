@@ -82,6 +82,9 @@ public class SplitBam
 		{
 		File fileout=new File(this.outFilePattern.replaceAll(REPLACE_CHROM, chromName));
 		LOG.info("creating mock BAM file "+fileout);
+		File parent=fileout.getParentFile();
+		if(parent!=null) parent.mkdirs();
+
 		SAMFileWriter sw=sf.makeBAMWriter(header, true, fileout);
 		if(if_bam_empty_add_mock_sam_record)
 			{
@@ -119,7 +122,10 @@ public class SplitBam
 			{
 			SAMRecord record=iter.next();
 			++nrecords;
-			
+			if(nrecords%1E6==0)
+				{
+				LOG.info("nRecord:"+nrecords);
+				}
 			String recordChrom=null;
 			if( record.getReadUnmappedFlag() )
 				{
@@ -146,6 +152,8 @@ public class SplitBam
 				{
 				File fileout=new File(this.outFilePattern.replaceAll(REPLACE_CHROM, recordChrom));
 				LOG.info("opening "+fileout);
+				File parent=fileout.getParentFile();
+				if(parent!=null) parent.mkdirs();
 				writer=sf.makeBAMWriter(header,this.input_is_sorted,fileout);
 				seen.put(recordChrom, writer);
 				nrecords=0L;
