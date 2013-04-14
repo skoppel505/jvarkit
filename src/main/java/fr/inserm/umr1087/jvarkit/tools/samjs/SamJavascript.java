@@ -8,6 +8,7 @@ package fr.inserm.umr1087.jvarkit.tools.samjs;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -34,6 +35,7 @@ public class SamJavascript
 	private ScriptEngine engine=null;
 	private boolean samoutput=false;
 	private long limit=-1L;
+	private File filenameout=null;
 	private SamJavascript()
 		{
 		
@@ -50,18 +52,25 @@ public class SamJavascript
 		
         SAMFileWriterFactory sf=new SAMFileWriterFactory();
         sf.setCreateIndex(false);
-        File stdout=new File("/dev/stdout");
-     
+        File stdout=(filenameout==null?new File("/dev/stdout"):filenameout);
+     	
         SAMFileWriter sw;
         if(!samoutput )
         	{
-        	if(!stdout.exists()) throw new IOException("Cannot save as BAM because "+stdout+" doesn't exist. Please use SAM.");
+        	if(!stdout.exists() && filenameout==null) //stdout
+			{
+			throw new IOException("Cannot save as BAM because "+stdout+" doesn't exist. Please use SAM.");
+			}
         	sw=sf.makeBAMWriter(header,false,stdout);        
         	}
-        else
+        else if(filenameout==null)
         	{
         	sw=sf.makeSAMWriter(header,false,System.out);        
         	}
+	else
+		{
+		sw=sf.makeSAMWriter(header,false,filenameout);
+		}
 
         Bindings bindings = this.engine.createBindings();
         bindings.put("header", header);
@@ -112,6 +121,7 @@ public class SamJavascript
 				System.err.println(" -h help; This screen.");
 				System.err.println(" -S : SAM output.");
 				System.err.println(" -e (script).");
+				System.err.println(" -o (fileout.bam) or stdout");
 				System.err.println(" -f (file).");
 				System.err.println(" -L (int) limit to 'L' records.");
 				System.err.println("the script puts 'record' a SamRecord (http://picard.sourceforge.net/javadoc/net/sf/samtools/SAMRecord.html)  " +
@@ -125,6 +135,10 @@ public class SamJavascript
 			else if(args[optind].equals("-L") && optind+1< args.length)
 				{
 				this.limit=Long.parseLong(args[++optind]);
+				}
+			else if(args[optind].equals("-o") && optind+1< args.length)
+				{
+				this.filenameout=new File(args[++optind]);
 				}
 			else if(args[optind].equals("-e") && optind+1< args.length)
 				{
