@@ -1,7 +1,9 @@
 package fr.inserm.umr1087.jvarkit.tools.splitbam;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
@@ -39,7 +41,8 @@ public class SplitBam
 	private boolean input_is_sorted=false;
 	private boolean create_index=false;
 	private File tmpDir=null;
-
+	private File chromGroup=null;
+	
 	private SplitBam()
 		{
 		
@@ -77,10 +80,10 @@ public class SplitBam
 	private void createEmptyFile(
 			SAMFileWriterFactory sf,
 			SAMFileHeader header,
-			String chromName
+			String groupName
 			) throws IOException
 		{
-		File fileout=new File(this.outFilePattern.replaceAll(REPLACE_CHROM, chromName));
+		File fileout=new File(this.outFilePattern.replaceAll(REPLACE_CHROM, groupName));
 		LOG.info("creating mock BAM file "+fileout);
 		File parent=fileout.getParentFile();
 		if(parent!=null) parent.mkdirs();
@@ -95,12 +98,79 @@ public class SplitBam
 	
 	private void scan(InputStream in) throws Exception
 		{
-		Set<String> all_chromosomes=new HashSet<String>();
+		Map<String,Set<String>> group2chroms=new HashMap<String, Set<String>>();
+		Map<String,String> chrom2group=new HashMap<String, String>();
+
+		//add undetermined group
+			{
+			Set<String> chroms=new HashSet<String>();
+			chroms.add(this.underterminedName);
+			group2chroms.put(this.underterminedName, chroms);
+			chrom2group.put(this.underterminedName, this.underterminedName);
+			}
+		
+		if(this.chromGroup!=null)
+			{
+			Set<String> all_chromosomes=new HashSet<String>();
+
+			for(SAMSequenceRecord seq:this.samSequenceDictionary.getSequences())
+				{
+				all_chromosomes.add(seq.getSequenceName());
+				}
+			
+			BufferedReader r=new BufferedReader(new FileReader(this.chromGroup));
+			String line;
+			while((line=r.readLine())!=null)
+				{
+				if(line.isEmpty() || line.startsWith("#")) continue;
+				int tab=line.indexOf('\t');
+				String chromName;
+				String groupName;
+				if(tab==-1)
+					{
+					chromName=line.trim();
+					groupName=chromName;
+					}
+				else
+					{
+					chromName=line.substring(0,tab);
+					groupName=line.substring(tab+1).trim();
+					}
+				if(!all_chromosomes.contains(chromName))
+					{
+					 throw new IOException("chrom "+chromName+" undefined in ref dict");
+					}
+				if(chrom2group.containsKey(chromName)) throw new IOException("chrom "+chromName+" defined twice in "+chrom2group);
+				
+				chrom2group.put(chromName, groupName);
+				Set<String> chroms=group2chroms.get(groupName);
+				if(chroms==null)
+					{
+					LOG.info("creating chrom group "+groupName);
+					chroms=new HashSet<String>();
+					group2chroms.put(groupName, chroms);
+					}
+				chroms.add(chromName);
+				}
+			r.close();
+			}
+		
 		for(SAMSequenceRecord seq:this.samSequenceDictionary.getSequences())
 			{
-			all_chromosomes.add(seq.getSequenceName());
+			String chromName=seq.getSequenceName();
+			if(chrom2group.containsKey(chromName)) continue;
+			if(group2chroms.get(chromName)!=null) 
+				{
+				throw new IOException("cannot create chrom group "+chromName+" because it is already defined.");
+				}
+			Set<String> chroms=new HashSet<String>();
+			chroms.add(chromName);
+			group2chroms.put(chromName, chroms);
+			chrom2group.put(chromName, chromName);
 			}
-		Map<String,SAMFileWriter> seen=new HashMap<String,SAMFileWriter>(all_chromosomes.size());
+		
+		
+		Map<String,SAMFileWriter> seen=new HashMap<String,SAMFileWriter>(group2chroms.size());
 		SAMFileReader samFileReader=new SAMFileReader(in);
 		samFileReader.setValidationStringency(ValidationStringency.SILENT);
 		SAMFileHeader header=samFileReader.getFileHeader();
@@ -126,36 +196,39 @@ public class SplitBam
 				{
 				LOG.info("nRecord:"+nrecords);
 				}
-			String recordChrom=null;
+			String recordChromName=null;
 			if( record.getReadUnmappedFlag() )
 				{
 				if(record.getMateUnmappedFlag())
 					{
-					recordChrom=this.underterminedName;
+					recordChromName=this.underterminedName;
 					}
 				else
 					{
-					recordChrom=record.getMateReferenceName();
+					recordChromName=record.getMateReferenceName();
 					}
 				}
 			else
 				{
-				recordChrom=record.getReferenceName();
-				if(!all_chromosomes.contains(recordChrom))
-					{
-					throw new IOException("Undefined chromosome "+recordChrom+" (not in ref dictionary "+all_chromosomes+").");
-					}
+				recordChromName=record.getReferenceName();
+				
 				}
-			SAMFileWriter writer=seen.get(recordChrom);
+			String groupName=chrom2group.get(recordChromName);
+			if(groupName==null)
+				{
+				throw new IOException("Undefined group/chrom for "+recordChromName+" (not in ref dictionary "+chrom2group.keySet()+").");
+				}
+			
+			SAMFileWriter writer=seen.get(groupName);
 			
 			if(writer==null)
 				{
-				File fileout=new File(this.outFilePattern.replaceAll(REPLACE_CHROM, recordChrom));
+				File fileout=new File(this.outFilePattern.replaceAll(REPLACE_CHROM, groupName));
 				LOG.info("opening "+fileout);
 				File parent=fileout.getParentFile();
 				if(parent!=null) parent.mkdirs();
 				writer=sf.makeBAMWriter(header,this.input_is_sorted,fileout);
-				seen.put(recordChrom, writer);
+				seen.put(groupName, writer);
 				nrecords=0L;
 				}
 			
@@ -164,21 +237,18 @@ public class SplitBam
 		
 		for(String k:seen.keySet())
 			{
-			LOG.info("closing "+k);
+			LOG.info("closing group "+k);
 			seen.get(k).close();
 			}
 		samFileReader.close();
 		
 		if(generate_empty_bams)
 			{
-			for(SAMSequenceRecord seq:this.samSequenceDictionary.getSequences())
+			
+			for(String groupName:group2chroms.keySet())
 				{
-				if(seen.containsKey(seq.getSequenceName())) continue;
-				createEmptyFile(sf,header, seq.getSequenceName());
-				}
-			if(!seen.containsKey(this.underterminedName))
-				{
-				createEmptyFile(sf,header, this.underterminedName);
+				if(seen.containsKey(groupName)) continue;
+				createEmptyFile(sf,header,groupName);
 				}
 			}
 		
@@ -208,6 +278,12 @@ public class SplitBam
 				System.err.println(" -s assume input is sorted.");
 				System.err.println(" -x | --index  create index.");
 				System.err.println(" -t | --tmp  (dir) tmp file directory");
+				System.err.println(" -G (file) chrom-group file\n" +
+							       "     Merge some chromosome in the following groups. Format:\n" +
+							       "     (chrom-name)\\t(group-name)\\n\n"+
+							       "     (chrom-name)\\n\n"+
+							       "     The missing chromosomes are defined in their own group"
+									);
 				return;
 				}
 			else if(args[optind].equals("-e")|| args[optind].equals("--empty"))
@@ -234,6 +310,10 @@ public class SplitBam
 			else if(args[optind].equals("-p") && optind+1< args.length)
 				{
 				outFilePattern= args[++optind];
+				}
+			else if(args[optind].equals("-G") && optind+1< args.length)
+				{
+				chromGroup= new File(args[++optind]);
 				}
 			else if(args[optind].equals("-s"))
 				{
