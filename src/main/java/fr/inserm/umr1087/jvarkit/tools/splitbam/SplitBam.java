@@ -43,6 +43,8 @@ public class SplitBam
 	private File tmpDir=null;
 	private File chromGroup=null;
 	
+	
+	
 	private SplitBam()
 		{
 		
@@ -96,18 +98,40 @@ public class SplitBam
 		sw.close();
 		}
 	
+	private static class ManyToMany
+		{
+		private java.util.Map<String,Set<String>> group2chroms=new java.util.HashMap<String, java.util.Set<String>>();
+		private java.util.Map<String,String> chrom2group=new java.util.HashMap<String, String>();
+		public void set(String group,String chrom)
+			{
+			if(containsChrom(chrom)) throw new IllegalArgumentException("chrom "+chrom+" already defined for group "+ chrom2group.get(chrom));
+			java.util.Set<String> set=group2chroms.get(group);
+			if(set==null)
+				{
+				set=new java.util.LinkedHashSet<String>();
+				group2chroms.put(group,set);
+				}
+			set.add(chrom);
+			chrom2group.put(chrom,group);
+			}
+		public boolean containsGroup(String s)
+			{
+			return group2chroms.containsKey(s);
+			}
+		public boolean containsChrom(String s)
+			{
+			return chrom2group.containsKey(s);
+			}
+			
+		}
+	
 	private void scan(InputStream in) throws Exception
 		{
-		Map<String,Set<String>> group2chroms=new HashMap<String, Set<String>>();
-		Map<String,String> chrom2group=new HashMap<String, String>();
+		ManyToMany many2many=new ManyToMany();
 
-		//add undetermined group
-			{
-			Set<String> chroms=new HashSet<String>();
-			chroms.add(this.underterminedName);
-			group2chroms.put(this.underterminedName, chroms);
-			chrom2group.put(this.underterminedName, this.underterminedName);
-			}
+		many2many.set(this.underterminedName, this.underterminedName);
+
+		
 		
 		if(this.chromGroup!=null)
 			{
@@ -123,34 +147,20 @@ public class SplitBam
 			while((line=r.readLine())!=null)
 				{
 				if(line.isEmpty() || line.startsWith("#")) continue;
-				int tab=line.indexOf('\t');
-				String chromName;
-				String groupName;
-				if(tab==-1)
+				String tokens[] =line.split("[ \t,]+");
+				String groupName=tokens[0].trim();
+				if(groupName.isEmpty()) throw new IOException("Empty group name in "+line);
+				if(many2many.containsGroup(groupName))  throw new IOException("Group defined twice "+groupName);
+				for(int i=1;i< tokens.length;i++)
 					{
-					chromName=line.trim();
-					groupName=chromName;
+					String chromName=tokens[i].trim();
+					if(!all_chromosomes.contains(chromName))
+						{
+						 throw new IOException("chrom "+chromName+" undefined in ref dict");
+						}
+					if(chromName.isEmpty()) continue;
+					many2many.set(groupName,chromName);
 					}
-				else
-					{
-					chromName=line.substring(0,tab);
-					groupName=line.substring(tab+1).trim();
-					}
-				if(!all_chromosomes.contains(chromName))
-					{
-					 throw new IOException("chrom "+chromName+" undefined in ref dict");
-					}
-				if(chrom2group.containsKey(chromName)) throw new IOException("chrom "+chromName+" defined twice in "+chrom2group);
-				
-				chrom2group.put(chromName, groupName);
-				Set<String> chroms=group2chroms.get(groupName);
-				if(chroms==null)
-					{
-					LOG.info("creating chrom group "+groupName);
-					chroms=new HashSet<String>();
-					group2chroms.put(groupName, chroms);
-					}
-				chroms.add(chromName);
 				}
 			r.close();
 			}
@@ -158,19 +168,16 @@ public class SplitBam
 		for(SAMSequenceRecord seq:this.samSequenceDictionary.getSequences())
 			{
 			String chromName=seq.getSequenceName();
-			if(chrom2group.containsKey(chromName)) continue;
-			if(group2chroms.get(chromName)!=null) 
+			if(many2many.containsChrom(chromName)) continue;
+			if(many2many.containsGroup(chromName)) 
 				{
 				throw new IOException("cannot create chrom group "+chromName+" because it is already defined.");
 				}
-			Set<String> chroms=new HashSet<String>();
-			chroms.add(chromName);
-			group2chroms.put(chromName, chroms);
-			chrom2group.put(chromName, chromName);
+			many2many.set(chromName,chromName);
 			}
 		
 		
-		Map<String,SAMFileWriter> seen=new HashMap<String,SAMFileWriter>(group2chroms.size());
+		Map<String,SAMFileWriter> seen=new HashMap<String,SAMFileWriter>(many2many.group2chroms.size());
 		SAMFileReader samFileReader=new SAMFileReader(in);
 		samFileReader.setValidationStringency(ValidationStringency.SILENT);
 		SAMFileHeader header=samFileReader.getFileHeader();
@@ -213,10 +220,10 @@ public class SplitBam
 				recordChromName=record.getReferenceName();
 				
 				}
-			String groupName=chrom2group.get(recordChromName);
+			String groupName=many2many.chrom2group.get(recordChromName);
 			if(groupName==null)
 				{
-				throw new IOException("Undefined group/chrom for "+recordChromName+" (not in ref dictionary "+chrom2group.keySet()+").");
+				throw new IOException("Undefined group/chrom for "+recordChromName+" (not in ref dictionary "+many2many.chrom2group.keySet()+").");
 				}
 			
 			SAMFileWriter writer=seen.get(groupName);
@@ -245,7 +252,7 @@ public class SplitBam
 		if(generate_empty_bams)
 			{
 			
-			for(String groupName:group2chroms.keySet())
+			for(String groupName:many2many.group2chroms.keySet())
 				{
 				if(seen.containsKey(groupName)) continue;
 				createEmptyFile(sf,header,groupName);
@@ -280,8 +287,8 @@ public class SplitBam
 				System.err.println(" -t | --tmp  (dir) tmp file directory");
 				System.err.println(" -G (file) chrom-group file\n" +
 							       "     Merge some chromosome in the following groups. Format:\n" +
-							       "     (chrom-name)\\t(group-name)\\n\n"+
-							       "     (chrom-name)\\n\n"+
+							       "     (group-name1)\\tchrom1\\tchrom2\\tchrom3...\\n\n"+
+							       "     (group-name2)\\tchrom11\\tchrom12\\tchrom22...\\n\n"+
 							       "     The missing chromosomes are defined in their own group"
 									);
 				return;
