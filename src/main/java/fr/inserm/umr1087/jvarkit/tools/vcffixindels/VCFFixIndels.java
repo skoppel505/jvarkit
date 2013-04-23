@@ -19,7 +19,7 @@ public class VCFFixIndels
 	private void run(BufferedReader in) throws IOException
 		{
 		Pattern tab=Pattern.compile("[\t]");
-		Pattern dna=Pattern.compile("[ATGCatgc]");
+		Pattern dna=Pattern.compile("[ATGCatgc]+");
 		String line;
 		while((line=in.readLine())!=null)
 			{
@@ -46,7 +46,7 @@ public class VCFFixIndels
 				dna.matcher(tokens[3]).matches() &&
 				dna.matcher(tokens[4]).matches() )
 				{
-				int pos=Integer.parseInt(tokens[2]);
+				int pos=Integer.parseInt(tokens[1]);
 				StringBuffer ref=new StringBuffer(tokens[3].toUpperCase());
 				StringBuffer alt=new StringBuffer(tokens[4].toUpperCase());
 				boolean changed=false;
@@ -75,10 +75,10 @@ public class VCFFixIndels
 				
 				if(changed)
 					{
-					LOG.info("changed "+tokens[2]+"/"+tokens[3]+"/"+tokens[4]+" to "+pos+"/"+ref+"/"+alt);
+					LOG.info("changed "+tokens[1]+"/"+tokens[3]+"/"+tokens[4]+" to "+pos+"/"+ref+"/"+alt);
 					}
 				
-				tokens[2]=String.valueOf(pos);
+				tokens[1]=String.valueOf(pos);
 				tokens[3]=ref.toString();
 				tokens[4]=alt.toString();
 				}
