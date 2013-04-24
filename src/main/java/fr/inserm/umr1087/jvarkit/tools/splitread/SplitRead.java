@@ -19,12 +19,33 @@ public class SplitRead {
 	private final Pattern comma=Pattern.compile("[,]");
 	private float maxFractionCommon=0.1f;
 	
+	private class Fragment
+		{
+		String chrom;
+		int pos;
+		char strand;
+		String cigar;
+		
+		public int compareTo(Fragment other)
+			{
+			int i=chrom.compareTo(other.chrom);
+			if(i!=0) return i;
+			return pos-other.pos;
+			}
+		
+		void print()
+			{
+			System.out.print(chrom+"\t"+pos+"\t"+strand+"\t"+cigar);
+			}
+		}
+	
+	
 	private void scanRecord(final SAMRecord record) throws Exception
 		{
 		if(record.getReadUnmappedFlag()) return;
 		String xp=record.getStringAttribute("XP");
 		if(xp==null) return;
-		
+		LOG.info(xp);
 		Cigar cigar1=record.getCigar();
 		int readPos=0;
 		int readMap1[]=new int[record.getReadLength()];
@@ -86,20 +107,42 @@ public class SplitRead {
 					default: throw new RuntimeException("cigar operator not handled:"+ce.getOperator());
 					}
 				}
-			if( common/readMap1.length > this.maxFractionCommon)
-				{	
+			float fraction=common/readMap1.length;
+			if(  fraction > this.maxFractionCommon)
+				{
 				continue;
 				}
-			System.out.println(
+
+			
+			Fragment f1=new Fragment();
+			f1.chrom=record.getReferenceName();
+			f1.pos=record.getAlignmentStart();
+			f1.strand=(record.getReadNegativeStrandFlag()?'-':'+');
+			f1.cigar=record.getCigarString();
+			
+			Fragment f2=new Fragment();
+			f2.chrom=tokens[0];
+			f2.pos=Integer.parseInt(tokens[1].substring(1));
+			f2.strand=tokens[1].charAt(0);
+			f2.cigar=tokens[2];
+
+			System.out.print(
 				record.getReadName()+"\t"+
-				(record.getFirstOfPairFlag()?'1':'2')+"\t"+
-				record.getReferenceName()+"\t"+
-				record.getAlignmentStart()+"\t"+
-				(record.getReadNegativeStrandFlag()?"-":"+")+"\t"+
-				tokens[0]+"\t"+//chrom
-				tokens[1].substring(1)+"\t"+//pos
-				tokens[1].charAt(0)//strand
+				(record.getFirstOfPairFlag()?'F':'R')+"\t"
 				);
+			if(f1.compareTo(f2)<0)
+				{
+				f1.print();
+				System.out.print("\t");
+				f2.print();
+				}
+			else
+				{
+				f2.print();
+				System.out.print("\t");
+				f1.print();
+				}	
+			System.out.println("\t"+fraction);
 			}
 		}
 	
@@ -115,6 +158,7 @@ public class SplitRead {
 			if(nrecords%1E6==0)
 				{
 				LOG.info("nRecord:"+nrecords);
+				System.out.flush();
 				}
 			scanRecord(record);
 			}
